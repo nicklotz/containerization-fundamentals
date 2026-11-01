@@ -147,7 +147,7 @@
 3. Open http://localhost:8090 in the browser.
 
    <!-- shots:begin -->
-   <img src="img/01-first-containers/0147-browser_open-1.png" alt="The page at http://localhost:8090" width="800">
+   <img src="img/01-first-containers/0154-browser_open-1.png" alt="The page at http://localhost:8090" width="800">
 
    <!-- shots:end -->
 
@@ -231,7 +231,7 @@
 4. Open http://localhost:9000 in the browser.
 
    <!-- shots:begin -->
-   <img src="img/01-first-containers/0226-browser_open-1.png" alt="The page at http://localhost:9000" width="800">
+   <img src="img/01-first-containers/0238-browser_open-1.png" alt="The page at http://localhost:9000" width="800">
 
    <!-- shots:end -->
 
@@ -240,21 +240,21 @@
 5. Paste the token into the form, enter the user name `admin` and the password `Portainer-Lab-2026` twice, and click **Create user**, then **Skip**, then **Get Started**, then **local**.
 
    <!-- shots:begin -->
-   <img src="img/01-first-containers/0230-portainer_init-1.png" alt="Set up Portainer, step 1 of 8" width="800">
+   <img src="img/01-first-containers/0261-portainer_init-1.png" alt="Set up Portainer, step 1 of 8" width="800">
 
-   <img src="img/01-first-containers/0230-portainer_init-2.png" alt="Set up Portainer, step 2 of 8" width="800">
+   <img src="img/01-first-containers/0261-portainer_init-2.png" alt="Set up Portainer, step 2 of 8" width="800">
 
-   <img src="img/01-first-containers/0230-portainer_init-3.png" alt="Set up Portainer, step 3 of 8" width="800">
+   <img src="img/01-first-containers/0261-portainer_init-3.png" alt="Set up Portainer, step 3 of 8" width="800">
 
-   <img src="img/01-first-containers/0230-portainer_init-4.png" alt="Set up Portainer, step 4 of 8" width="800">
+   <img src="img/01-first-containers/0261-portainer_init-4.png" alt="Set up Portainer, step 4 of 8" width="800">
 
-   <img src="img/01-first-containers/0230-portainer_init-5.png" alt="Set up Portainer, step 5 of 8" width="800">
+   <img src="img/01-first-containers/0261-portainer_init-5.png" alt="Set up Portainer, step 5 of 8" width="800">
 
-   <img src="img/01-first-containers/0230-portainer_init-6.png" alt="Set up Portainer, step 6 of 8" width="800">
+   <img src="img/01-first-containers/0261-portainer_init-6.png" alt="Set up Portainer, step 6 of 8" width="800">
 
-   <img src="img/01-first-containers/0230-portainer_init-7.png" alt="Set up Portainer, step 7 of 8" width="800">
+   <img src="img/01-first-containers/0261-portainer_init-7.png" alt="Set up Portainer, step 7 of 8" width="800">
 
-   <img src="img/01-first-containers/0230-portainer_init-8.png" alt="Set up Portainer, step 8 of 8" width="800">
+   <img src="img/01-first-containers/0261-portainer_init-8.png" alt="Set up Portainer, step 8 of 8" width="800">
 
    <!-- shots:end -->
 
@@ -269,15 +269,13 @@
 6. In Portainer, click **Containers**, then **web**, then **Logs**.
 
    <!-- shots:begin -->
-   <img src="img/01-first-containers/0240-portainer_view-1.png" alt="Portainer: container-logs web, step 1 of 5" width="800">
+   <img src="img/01-first-containers/0284-portainer_view-1.png" alt="Portainer: container-logs web, step 1 of 4" width="800">
 
-   <img src="img/01-first-containers/0240-portainer_view-2.png" alt="Portainer: container-logs web, step 2 of 5" width="800">
+   <img src="img/01-first-containers/0284-portainer_view-2.png" alt="Portainer: container-logs web, step 2 of 4" width="800">
 
-   <img src="img/01-first-containers/0240-portainer_view-3.png" alt="Portainer: container-logs web, step 3 of 5" width="800">
+   <img src="img/01-first-containers/0284-portainer_view-3.png" alt="Portainer: container-logs web, step 3 of 4" width="800">
 
-   <img src="img/01-first-containers/0240-portainer_view-4.png" alt="Portainer: container-logs web, step 4 of 5" width="800">
-
-   <img src="img/01-first-containers/0240-portainer_view-5.png" alt="Portainer: container-logs web, step 5 of 5" width="800">
+   <img src="img/01-first-containers/0284-portainer_view-4.png" alt="Portainer: container-logs web, step 4 of 4" width="800">
 
    <!-- shots:end -->
 
@@ -288,15 +286,13 @@
 7. In Portainer, click **Containers**, then **web**, then **Stats**.
 
    <!-- shots:begin -->
-   <img src="img/01-first-containers/0246-portainer_view-1.png" alt="Portainer: container-stats web, step 1 of 5" width="800">
+   <img src="img/01-first-containers/0303-portainer_view-1.png" alt="Portainer: container-stats web, step 1 of 4" width="800">
 
-   <img src="img/01-first-containers/0246-portainer_view-2.png" alt="Portainer: container-stats web, step 2 of 5" width="800">
+   <img src="img/01-first-containers/0303-portainer_view-2.png" alt="Portainer: container-stats web, step 2 of 4" width="800">
 
-   <img src="img/01-first-containers/0246-portainer_view-3.png" alt="Portainer: container-stats web, step 3 of 5" width="800">
+   <img src="img/01-first-containers/0303-portainer_view-3.png" alt="Portainer: container-stats web, step 3 of 4" width="800">
 
-   <img src="img/01-first-containers/0246-portainer_view-4.png" alt="Portainer: container-stats web, step 4 of 5" width="800">
-
-   <img src="img/01-first-containers/0246-portainer_view-5.png" alt="Portainer: container-stats web, step 5 of 5" width="800">
+   <img src="img/01-first-containers/0303-portainer_view-4.png" alt="Portainer: container-stats web, step 4 of 4" width="800">
 
    <!-- shots:end -->
 
@@ -503,9 +499,9 @@
 6. In Portainer, click **Containers**.
 
    <!-- shots:begin -->
-   <img src="img/01-first-containers/0448-portainer_view-1.png" alt="Portainer: containers, step 1 of 2" width="800">
+   <img src="img/01-first-containers/0512-portainer_view-1.png" alt="Portainer: containers, step 1 of 2" width="800">
 
-   <img src="img/01-first-containers/0448-portainer_view-2.png" alt="Portainer: containers, step 2 of 2" width="800">
+   <img src="img/01-first-containers/0512-portainer_view-2.png" alt="Portainer: containers, step 2 of 2" width="800">
 
    <!-- shots:end -->
 

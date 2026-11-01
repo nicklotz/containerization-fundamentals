@@ -208,11 +208,11 @@
 4. In Portainer, click **Containers**, type `scanner` in the search box, and find the three `bagtrack-scanner` containers of the stack.
 
    <!-- shots:begin -->
-   <img src="img/05-compose-and-ecs/0210-portainer_view-1.png" alt="Portainer: containers scanner, step 1 of 3" width="800">
+   <img src="img/05-compose-and-ecs/0219-portainer_view-1.png" alt="Portainer: containers scanner, step 1 of 3" width="800">
 
-   <img src="img/05-compose-and-ecs/0210-portainer_view-2.png" alt="Portainer: containers scanner, step 2 of 3" width="800">
+   <img src="img/05-compose-and-ecs/0219-portainer_view-2.png" alt="Portainer: containers scanner, step 2 of 3" width="800">
 
-   <img src="img/05-compose-and-ecs/0210-portainer_view-3.png" alt="Portainer: containers scanner, step 3 of 3" width="800">
+   <img src="img/05-compose-and-ecs/0219-portainer_view-3.png" alt="Portainer: containers scanner, step 3 of 3" width="800">
 
    <!-- shots:end -->
 

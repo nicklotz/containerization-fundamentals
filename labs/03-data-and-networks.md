@@ -47,13 +47,11 @@
 5. In Portainer, click **Networks**, then **lab**.
 
    <!-- shots:begin -->
-   <img src="img/03-data-and-networks/0047-portainer_view-1.png" alt="Portainer: network lab, step 1 of 4" width="800">
+   <img src="img/03-data-and-networks/0060-portainer_view-1.png" alt="Portainer: network lab, step 1 of 3" width="800">
 
-   <img src="img/03-data-and-networks/0047-portainer_view-2.png" alt="Portainer: network lab, step 2 of 4" width="800">
+   <img src="img/03-data-and-networks/0060-portainer_view-2.png" alt="Portainer: network lab, step 2 of 3" width="800">
 
-   <img src="img/03-data-and-networks/0047-portainer_view-3.png" alt="Portainer: network lab, step 3 of 4" width="800">
-
-   <img src="img/03-data-and-networks/0047-portainer_view-4.png" alt="Portainer: network lab, step 4 of 4" width="800">
+   <img src="img/03-data-and-networks/0060-portainer_view-3.png" alt="Portainer: network lab, step 3 of 3" width="800">
 
    <!-- shots:end -->
 
@@ -173,13 +171,11 @@
 5. In Portainer, click **Volumes**, then **bagtrack-db**.
 
    <!-- shots:begin -->
-   <img src="img/03-data-and-networks/0162-portainer_view-1.png" alt="Portainer: volume bagtrack-db, step 1 of 4" width="800">
+   <img src="img/03-data-and-networks/0186-portainer_view-1.png" alt="Portainer: volume bagtrack-db, step 1 of 3" width="800">
 
-   <img src="img/03-data-and-networks/0162-portainer_view-2.png" alt="Portainer: volume bagtrack-db, step 2 of 4" width="800">
+   <img src="img/03-data-and-networks/0186-portainer_view-2.png" alt="Portainer: volume bagtrack-db, step 2 of 3" width="800">
 
-   <img src="img/03-data-and-networks/0162-portainer_view-3.png" alt="Portainer: volume bagtrack-db, step 3 of 4" width="800">
-
-   <img src="img/03-data-and-networks/0162-portainer_view-4.png" alt="Portainer: volume bagtrack-db, step 4 of 4" width="800">
+   <img src="img/03-data-and-networks/0186-portainer_view-3.png" alt="Portainer: volume bagtrack-db, step 3 of 3" width="800">
 
    <!-- shots:end -->
 
@@ -241,7 +237,7 @@
 2. Open http://localhost:8080 in the browser.
 
    <!-- shots:begin -->
-   <img src="img/03-data-and-networks/0219-browser_open-1.png" alt="The page at http://localhost:8080" width="800">
+   <img src="img/03-data-and-networks/0248-browser_open-1.png" alt="The page at http://localhost:8080" width="800">
 
    <!-- shots:end -->
 
@@ -262,7 +258,7 @@
 4. Reload the board in the browser.
 
    <!-- shots:begin -->
-   <img src="img/03-data-and-networks/0235-browser_open-1.png" alt="The page at http://localhost:8080" width="800">
+   <img src="img/03-data-and-networks/0269-browser_open-1.png" alt="The page at http://localhost:8080" width="800">
 
    <!-- shots:end -->
 

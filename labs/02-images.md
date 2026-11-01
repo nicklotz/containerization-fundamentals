@@ -71,9 +71,9 @@
 5. In Portainer, click **Images**.
 
    <!-- shots:begin -->
-   <img src="img/02-images/0071-portainer_view-1.png" alt="Portainer: images, step 1 of 2" width="800">
+   <img src="img/02-images/0080-portainer_view-1.png" alt="Portainer: images, step 1 of 2" width="800">
 
-   <img src="img/02-images/0071-portainer_view-2.png" alt="Portainer: images, step 2 of 2" width="800">
+   <img src="img/02-images/0080-portainer_view-2.png" alt="Portainer: images, step 2 of 2" width="800">
 
    <!-- shots:end -->
 
@@ -138,7 +138,24 @@
 
 ## Part 4: Write the Dockerfile
 
-1. Create `~/bagtrack/bag-api/Dockerfile` in VS Code with this content and save it.
+1. Create `~/bagtrack/bag-api/Dockerfile` in VS Code: click the `bag-api` folder, click **New File**, type `Dockerfile`, paste this content with Ctrl+V, and save with Ctrl+S.
+
+   <!-- shots:begin -->
+   <img src="img/02-images/0143-vscode_new_file-1.png" alt="Create a file in VS Code, step 1 of 6" width="800">
+
+   <img src="img/02-images/0143-vscode_new_file-2.png" alt="Create a file in VS Code, step 2 of 6" width="800">
+
+   <img src="img/02-images/0143-vscode_new_file-3.png" alt="Create a file in VS Code, step 3 of 6" width="800">
+
+   <img src="img/02-images/0143-vscode_new_file-4.png" alt="Create a file in VS Code, step 4 of 6" width="800">
+
+   <img src="img/02-images/0143-vscode_new_file-5.png" alt="Create a file in VS Code, step 5 of 6" width="800">
+
+   <img src="img/02-images/0143-vscode_new_file-6.png" alt="Create a file in VS Code, step 6 of 6" width="800">
+
+   <!-- shots:end -->
+
+   <!-- ui: vscode_new_file ~/bagtrack/bag-api/Dockerfile ~/containerization-fundamentals/solutions/lab02/bagtrack/bag-api/Dockerfile -->
 
    <!-- file: ~/bagtrack/bag-api/Dockerfile -->
    ```dockerfile
@@ -192,13 +209,11 @@
 6. In Portainer, click **Images**, then the ID of the `bag-api:0.1` image.
 
    <!-- shots:begin -->
-   <img src="img/02-images/0185-portainer_view-1.png" alt="Portainer: image bag-api:0.1, step 1 of 4" width="800">
+   <img src="img/02-images/0205-portainer_view-1.png" alt="Portainer: image bag-api:0.1, step 1 of 3" width="800">
 
-   <img src="img/02-images/0185-portainer_view-2.png" alt="Portainer: image bag-api:0.1, step 2 of 4" width="800">
+   <img src="img/02-images/0205-portainer_view-2.png" alt="Portainer: image bag-api:0.1, step 2 of 3" width="800">
 
-   <img src="img/02-images/0185-portainer_view-3.png" alt="Portainer: image bag-api:0.1, step 3 of 4" width="800">
-
-   <img src="img/02-images/0185-portainer_view-4.png" alt="Portainer: image bag-api:0.1, step 4 of 4" width="800">
+   <img src="img/02-images/0205-portainer_view-3.png" alt="Portainer: image bag-api:0.1, step 3 of 3" width="800">
 
    <!-- shots:end -->
 
@@ -251,7 +266,7 @@
 5. Open http://localhost:8000/docs in the browser.
 
    <!-- shots:begin -->
-   <img src="img/02-images/0233-browser_open-1.png" alt="The page at http://localhost:8000/docs" width="800">
+   <img src="img/02-images/0258-browser_open-1.png" alt="The page at http://localhost:8000/docs" width="800">
 
    <!-- shots:end -->
 
@@ -262,15 +277,13 @@
 6. In Portainer, click **Containers**, then **bag-api**, then **Logs**.
 
    <!-- shots:begin -->
-   <img src="img/02-images/0239-portainer_view-1.png" alt="Portainer: container-logs bag-api, step 1 of 5" width="800">
+   <img src="img/02-images/0277-portainer_view-1.png" alt="Portainer: container-logs bag-api, step 1 of 4" width="800">
 
-   <img src="img/02-images/0239-portainer_view-2.png" alt="Portainer: container-logs bag-api, step 2 of 5" width="800">
+   <img src="img/02-images/0277-portainer_view-2.png" alt="Portainer: container-logs bag-api, step 2 of 4" width="800">
 
-   <img src="img/02-images/0239-portainer_view-3.png" alt="Portainer: container-logs bag-api, step 3 of 5" width="800">
+   <img src="img/02-images/0277-portainer_view-3.png" alt="Portainer: container-logs bag-api, step 3 of 4" width="800">
 
-   <img src="img/02-images/0239-portainer_view-4.png" alt="Portainer: container-logs bag-api, step 4 of 5" width="800">
-
-   <img src="img/02-images/0239-portainer_view-5.png" alt="Portainer: container-logs bag-api, step 5 of 5" width="800">
+   <img src="img/02-images/0277-portainer_view-4.png" alt="Portainer: container-logs bag-api, step 4 of 4" width="800">
 
    <!-- shots:end -->
 

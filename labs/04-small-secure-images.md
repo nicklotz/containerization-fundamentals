@@ -187,11 +187,11 @@
 5. In Portainer, click **Images**, type `python` in the search box, and compare the **Size** column of the three Python images.
 
    <!-- shots:begin -->
-   <img src="img/04-small-secure-images/0189-portainer_view-1.png" alt="Portainer: images python, step 1 of 3" width="800">
+   <img src="img/04-small-secure-images/0198-portainer_view-1.png" alt="Portainer: images python, step 1 of 3" width="800">
 
-   <img src="img/04-small-secure-images/0189-portainer_view-2.png" alt="Portainer: images python, step 2 of 3" width="800">
+   <img src="img/04-small-secure-images/0198-portainer_view-2.png" alt="Portainer: images python, step 2 of 3" width="800">
 
-   <img src="img/04-small-secure-images/0189-portainer_view-3.png" alt="Portainer: images python, step 3 of 3" width="800">
+   <img src="img/04-small-secure-images/0198-portainer_view-3.png" alt="Portainer: images python, step 3 of 3" width="800">
 
    <!-- shots:end -->
 
@@ -287,15 +287,13 @@
 9. In Portainer, click **Containers**, then **bag-api**, then **Inspect**, and find `"ReadonlyRootfs": true` and `"CapDrop"`.
 
    <!-- shots:begin -->
-   <img src="img/04-small-secure-images/0280-portainer_view-1.png" alt="Portainer: container-inspect bag-api, step 1 of 5" width="800">
+   <img src="img/04-small-secure-images/0302-portainer_view-1.png" alt="Portainer: container-inspect bag-api, step 1 of 4" width="800">
 
-   <img src="img/04-small-secure-images/0280-portainer_view-2.png" alt="Portainer: container-inspect bag-api, step 2 of 5" width="800">
+   <img src="img/04-small-secure-images/0302-portainer_view-2.png" alt="Portainer: container-inspect bag-api, step 2 of 4" width="800">
 
-   <img src="img/04-small-secure-images/0280-portainer_view-3.png" alt="Portainer: container-inspect bag-api, step 3 of 5" width="800">
+   <img src="img/04-small-secure-images/0302-portainer_view-3.png" alt="Portainer: container-inspect bag-api, step 3 of 4" width="800">
 
-   <img src="img/04-small-secure-images/0280-portainer_view-4.png" alt="Portainer: container-inspect bag-api, step 4 of 5" width="800">
-
-   <img src="img/04-small-secure-images/0280-portainer_view-5.png" alt="Portainer: container-inspect bag-api, step 5 of 5" width="800">
+   <img src="img/04-small-secure-images/0302-portainer_view-4.png" alt="Portainer: container-inspect bag-api, step 4 of 4" width="800">
 
    <!-- shots:end -->
 

@@ -67,6 +67,7 @@ ui_portainer_view() { shots_ui portainer_view "$@" || true; }
 ui_harness_view() { shots_ui harness_view "$@" || true; }
 ui_view_execution() { shots_ui view_execution "$@" || true; }
 ui_headlamp_view() { shots_ui headlamp_view "$@" || true; }
+ui_vscode_new_file() { shots_ui vscode_new_file "$@" || true; }   # PATH SOURCE; the file: block writes the file
 
 # ---------------------------------------------------------------- Portainer
 P_URL="${P_URL:-http://localhost:9000}"
