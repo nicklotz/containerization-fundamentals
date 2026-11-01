@@ -134,7 +134,7 @@
 8. Open http://localhost:8080 in the browser.
 
    <!-- shots:begin -->
-   <img src="img/04-small-secure-images/0136-browser_open-1.png" alt="The page at http://localhost:8080" width="800">
+   <img src="img/04-small-secure-images/0141-browser_open-1.png" alt="The page at http://localhost:8080" width="800">
 
    <!-- shots:end -->
 
@@ -184,9 +184,18 @@
 
    The slim image has far fewer.
 
-5. In Portainer, click **Images** and compare the **Size** column of the three Python images.
+5. In Portainer, click **Images**, type `python` in the search box, and compare the **Size** column of the three Python images.
 
-   <!-- ui: portainer_view images -->
+   <!-- shots:begin -->
+   <img src="img/04-small-secure-images/0189-portainer_view-1.png" alt="Portainer: images python, step 1 of 3" width="800">
+
+   <img src="img/04-small-secure-images/0189-portainer_view-2.png" alt="Portainer: images python, step 2 of 3" width="800">
+
+   <img src="img/04-small-secure-images/0189-portainer_view-3.png" alt="Portainer: images python, step 3 of 3" width="800">
+
+   <!-- shots:end -->
+
+   <!-- ui: portainer_view images python -->
 
 <!-- catchup: skip-end -->
 
@@ -276,6 +285,19 @@
    -->
 
 9. In Portainer, click **Containers**, then **bag-api**, then **Inspect**, and find `"ReadonlyRootfs": true` and `"CapDrop"`.
+
+   <!-- shots:begin -->
+   <img src="img/04-small-secure-images/0280-portainer_view-1.png" alt="Portainer: container-inspect bag-api, step 1 of 5" width="800">
+
+   <img src="img/04-small-secure-images/0280-portainer_view-2.png" alt="Portainer: container-inspect bag-api, step 2 of 5" width="800">
+
+   <img src="img/04-small-secure-images/0280-portainer_view-3.png" alt="Portainer: container-inspect bag-api, step 3 of 5" width="800">
+
+   <img src="img/04-small-secure-images/0280-portainer_view-4.png" alt="Portainer: container-inspect bag-api, step 4 of 5" width="800">
+
+   <img src="img/04-small-secure-images/0280-portainer_view-5.png" alt="Portainer: container-inspect bag-api, step 5 of 5" width="800">
+
+   <!-- shots:end -->
 
    <!-- ui: portainer_view container-inspect bag-api -->
 

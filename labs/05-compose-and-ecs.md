@@ -139,7 +139,7 @@
 4. Open http://localhost:8080 in the browser.
 
    <!-- shots:begin -->
-   <img src="img/05-compose-and-ecs/0141-browser_open-1.png" alt="The page at http://localhost:8080" width="800">
+   <img src="img/05-compose-and-ecs/0146-browser_open-1.png" alt="The page at http://localhost:8080" width="800">
 
    <!-- shots:end -->
 
@@ -150,9 +150,9 @@
 5. In Portainer, click **Stacks**.
 
    <!-- shots:begin -->
-   <img src="img/05-compose-and-ecs/0147-portainer_view-1.png" alt="Portainer: stacks, step 1 of 2" width="800">
+   <img src="img/05-compose-and-ecs/0159-portainer_view-1.png" alt="Portainer: stacks, step 1 of 2" width="800">
 
-   <img src="img/05-compose-and-ecs/0147-portainer_view-2.png" alt="Portainer: stacks, step 2 of 2" width="800">
+   <img src="img/05-compose-and-ecs/0159-portainer_view-2.png" alt="Portainer: stacks, step 2 of 2" width="800">
 
    <!-- shots:end -->
 
@@ -205,9 +205,18 @@
 
    The lines come from three scanner IDs, the name after `scanner` in each line.
 
-4. In Portainer, click **Containers** and find the three `bagtrack-scanner` containers of the stack.
+4. In Portainer, click **Containers**, type `scanner` in the search box, and find the three `bagtrack-scanner` containers of the stack.
 
-   <!-- ui: portainer_view containers -->
+   <!-- shots:begin -->
+   <img src="img/05-compose-and-ecs/0210-portainer_view-1.png" alt="Portainer: containers scanner, step 1 of 3" width="800">
+
+   <img src="img/05-compose-and-ecs/0210-portainer_view-2.png" alt="Portainer: containers scanner, step 2 of 3" width="800">
+
+   <img src="img/05-compose-and-ecs/0210-portainer_view-3.png" alt="Portainer: containers scanner, step 3 of 3" width="800">
+
+   <!-- shots:end -->
+
+   <!-- ui: portainer_view containers scanner -->
 
 ## Part 6: Live reload for development
 
