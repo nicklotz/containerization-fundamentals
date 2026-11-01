@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Baggage claim</title>
+  <link rel="stylesheet" href="board.css">
+  <script src="board.js" defer></script>
+</head>
+<body>
+  <header>
+    <h1>Baggage claim — <span id="hub">…</span></h1>
+    <p id="updated" class="updated">Not updated yet</p>
+  </header>
+
+  <p id="banner" class="banner" role="alert" hidden></p>
+
+  <main>
+    <table>
+      <thead>
+        <tr><th>Tag</th><th>Flight</th><th>Destination</th><th>Passenger</th><th>Status</th></tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <p id="empty" class="empty" hidden>No bags yet.</p>
+  </main>
+
+  <footer id="footer">Waiting for bag-api…</footer>
+</body>
+</html>

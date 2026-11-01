@@ -1,0 +1,25 @@
+# nginx server for the baggage claim board (nginxinc/nginx-unprivileged image).
+#
+# At startup the image writes this file to /etc/nginx/conf.d/default.conf and
+# replaces the BAG_API_URL placeholder below with the value of the BAG_API_URL
+# environment variable, for example http://bag-api:8000 (no trailing slash).
+
+server {
+    # The unprivileged image runs as a normal user, which cannot use port 80.
+    listen 8080;
+
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # For liveness and readiness probes. This does not call bag-api.
+    location = /healthz {
+        access_log off;
+        default_type text/plain;
+        return 200 "ok\n";
+    }
+
+    # Send /api/... to bag-api with the same path, for example /api/bags.
+    location /api/ {
+        proxy_pass ${BAG_API_URL};
+    }
+}

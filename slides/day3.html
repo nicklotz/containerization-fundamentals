@@ -1,0 +1,1083 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Containerization Fast Track · Day 3: Kubernetes</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.2.1/dist/reset.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.2.1/dist/reveal.css">
+<link rel="stylesheet" href="theme.css">
+<style>
+/* Day 3 only: keep inline commands and DNS names such as "kubectl get pod bag-api -o yaml" on one line. */
+.reveal p code, .reveal li code, .reveal td code { white-space: nowrap; }
+</style>
+</head>
+<body>
+<div class="reveal">
+<div class="slides">
+
+<section class="title-slide" data-state="title" data-background-color="#0E2A2E">
+  <div class="t-course">Containerization Fast Track</div>
+  <div class="t-main">Day 3: Kubernetes</div>
+  <div class="t-sub">United Airlines · Pluralsight instructor-led training</div>
+  <div class="t-meta">Nick Lotz</div>
+  <aside class="notes">Welcome back. On Days 1 and 2 we ran BagTrack's containers on one machine with Docker and Compose, and we wrote ECS task definitions for them. Today the same images run on Kubernetes. We start with what an orchestrator does and how Kubernetes is built. Then we cover Pods and their configuration, Services and Deployments, and finally storage and batch work. Each lecture ends with a lab on your VM. Lab 07 creates a three-node k3d cluster, Lab 08 deploys bag-api, board and scanner, and Lab 09 moves Postgres into a StatefulSet. k3d stands in for Amazon EKS, which United's Digital Technology teams use next to ECS with Fargate. Ask the class who has used kubectl before, and who has deployed to EKS through Harness. Their answers tell you which architecture slides need more detail.</aside>
+</section>
+
+<section>
+  <h2>Docker concepts and their Kubernetes equivalents</h2>
+  <svg class="diagram" viewBox="0 0 1128 446" role="img" aria-label="Seven Docker and Compose concepts, each linked by an arrow to its Kubernetes equivalent">
+    <defs><marker id="arr-d3-2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#56676D"/></marker></defs>
+    <g font-size="17" fill="#56676D">
+      <text x="0" y="22">Docker and Compose (Days 1 and 2)</text>
+      <text x="628" y="22">Kubernetes (Day 3)</text>
+    </g>
+    <g fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5">
+      <rect x="0" y="40" width="500" height="48" rx="4"/><rect x="628" y="40" width="500" height="48" rx="4" fill="#FFFFFF" stroke="#0B7A75" stroke-width="2.5"/>
+      <rect x="0" y="98" width="500" height="48" rx="4"/><rect x="628" y="98" width="500" height="48" rx="4"/>
+      <rect x="0" y="156" width="500" height="48" rx="4"/><rect x="628" y="156" width="500" height="48" rx="4"/>
+      <rect x="0" y="214" width="500" height="48" rx="4"/><rect x="628" y="214" width="500" height="48" rx="4"/>
+      <rect x="0" y="272" width="500" height="48" rx="4"/><rect x="628" y="272" width="500" height="48" rx="4"/>
+      <rect x="0" y="330" width="500" height="48" rx="4"/><rect x="628" y="330" width="500" height="48" rx="4"/>
+      <rect x="0" y="388" width="500" height="48" rx="4"/><rect x="628" y="388" width="500" height="48" rx="4"/>
+    </g>
+    <g font-size="18" fill="#17262B">
+      <text x="20" y="70">A container from <tspan font-family="Plex Mono, Menlo, monospace" font-size="17">docker run</tspan></text>
+      <text x="648" y="70">A Pod with one or more containers</text>
+      <text x="20" y="128">A restart policy</text>
+      <text x="648" y="128">restartPolicy, plus controllers that replace Pods</text>
+      <text x="20" y="186"><tspan font-family="Plex Mono, Menlo, monospace" font-size="17">HEALTHCHECK</tspan> in the Dockerfile</text>
+      <text x="648" y="186">Liveness, readiness and startup probes</text>
+      <text x="20" y="244">Environment variables and env files</text>
+      <text x="648" y="244">ConfigMaps and Secrets</text>
+      <text x="20" y="302">A user-defined network with DNS</text>
+      <text x="648" y="302">A Service and the cluster DNS</text>
+      <text x="20" y="360">A named volume</text>
+      <text x="648" y="360">A PersistentVolumeClaim</text>
+      <text x="20" y="418">A Compose service with several replicas</text>
+      <text x="648" y="418">A Deployment</text>
+    </g>
+    <g stroke="#56676D" stroke-width="1.8" marker-end="url(#arr-d3-2)">
+      <line x1="506" y1="64" x2="621" y2="64"/><line x1="506" y1="122" x2="621" y2="122"/><line x1="506" y1="180" x2="621" y2="180"/>
+      <line x1="506" y1="238" x2="621" y2="238"/><line x1="506" y1="296" x2="621" y2="296"/><line x1="506" y1="354" x2="621" y2="354"/>
+      <line x1="506" y1="412" x2="621" y2="412"/>
+    </g>
+  </svg>
+  <p>Kubernetes runs the same OCI images that you built and scanned on Days 1 and 2.</p>
+  <aside class="notes">This slide connects the last two days to today. Read each row from left to right. Everything on the left ran on one host and did what you told it once. On the right, the same idea is an object in the Kubernetes API, and a controller keeps it true across many nodes. Two differences matter early. Kubernetes does not use the Dockerfile HEALTHCHECK instruction; you declare probes in the Pod spec instead. And docker run starts a container once, while a Deployment keeps replacing Pods until the number you asked for are running. BagTrack example: in Compose, the board found bag-api by the name bag-api on the network. In Kubernetes, a Service called bag-api provides that name. Ask which row they expect to work differently on ECS. One answer is networking, because awsvpc gives each task its own network interface, much as each Pod gets its own IP address. Source: Kubernetes Authors (2026), Kubernetes documentation.</aside>
+</section>
+
+<section>
+  <h2>What an orchestrator does</h2>
+  <ul>
+    <li><strong>Scheduling</strong> picks a node for each container, based on the CPU and memory it requests</li>
+    <li><strong>Self-healing</strong> restarts failed containers and replaces them when a node fails</li>
+    <li><strong>Scaling</strong> runs more or fewer copies of a service</li>
+    <li><strong>Service discovery and load balancing</strong> give a set of copies one stable name and address</li>
+    <li><strong>Rollouts and rollbacks</strong> replace a version step by step and can return to the previous one</li>
+  </ul>
+  <p>Docker Engine runs containers on one host. An orchestrator manages them across a cluster of hosts (Kubernetes Authors, 2026).</p>
+  <aside class="notes">Start from what the students already know. On Days 1 and 2, Docker did these jobs on one machine, and you did the rest by hand. Restart policies brought containers back after a crash, and you ran docker compose up with --scale when you wanted three scanners. An orchestrator does the same jobs for many machines, and it keeps doing them without a person watching. ECS is also an orchestrator. Its service scheduler keeps the desired number of tasks running and replaces failed ones. Kubernetes does the same with Deployments. The Kubernetes overview page lists these capabilities, along with storage orchestration, batch execution and configuration management, which come later today. Ask the class which of the five they did by hand on Day 2. Source: Kubernetes Authors (2026), Overview.</aside>
+</section>
+
+<section>
+  <h2>What a scheduler does</h2>
+  <svg class="diagram" viewBox="0 0 1128 296" role="img" aria-label="A pending Pod goes through filter, score and bind; in the example k3d-hub-agent-0 is filtered out and k3d-hub-agent-1 wins with the highest score">
+    <defs><marker id="arr-d3-4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#56676D"/></marker></defs>
+    <g fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5">
+      <rect x="0" y="0" width="240" height="118" rx="4"/><rect x="296" y="0" width="240" height="118" rx="4"/>
+      <rect x="592" y="0" width="240" height="118" rx="4"/><rect x="888" y="0" width="240" height="118" rx="4"/>
+      <rect x="0" y="190" width="352" height="96" rx="4"/><rect x="388" y="190" width="352" height="96" rx="4" fill="#FFFFFF" stroke="#0B7A75" stroke-width="2.5"/>
+      <rect x="776" y="190" width="352" height="96" rx="4"/>
+    </g>
+    <g text-anchor="middle" fill="#17262B">
+      <text x="120" y="40" font-size="20" font-weight="600">Pending Pod</text>
+      <text x="120" y="70" font-size="16" fill="#56676D">no node assigned yet</text>
+      <text x="120" y="94" font-size="16" fill="#56676D">requests 250m CPU, 256Mi</text>
+      <text x="416" y="40" font-size="20" font-weight="600">Filter</text>
+      <text x="416" y="70" font-size="16" fill="#56676D">drop the nodes that</text>
+      <text x="416" y="94" font-size="16" fill="#56676D">cannot fit the requests</text>
+      <text x="712" y="40" font-size="20" font-weight="600">Score</text>
+      <text x="712" y="70" font-size="16" fill="#56676D">rank the nodes</text>
+      <text x="712" y="94" font-size="16" fill="#56676D">that remain</text>
+      <text x="1008" y="40" font-size="20" font-weight="600">Bind</text>
+      <text x="1008" y="70" font-size="16" fill="#56676D">record the chosen</text>
+      <text x="1008" y="94" font-size="16" fill="#56676D">node in the Pod</text>
+      <text x="176" y="230" font-size="20" font-weight="600">k3d-hub-agent-0</text>
+      <text x="176" y="260" font-size="16" fill="#56676D">filtered out, 100m CPU unreserved</text>
+      <text x="564" y="230" font-size="20" font-weight="600">k3d-hub-agent-1</text>
+      <text x="564" y="260" font-size="16" fill="#56676D">fits, score 82, chosen</text>
+      <text x="952" y="230" font-size="20" font-weight="600">k3d-hub-server-0</text>
+      <text x="952" y="260" font-size="16" fill="#56676D">fits, score 64</text>
+    </g>
+    <text x="0" y="168" font-size="17" fill="#56676D">Example with the three nodes of the lab cluster</text>
+    <g stroke="#56676D" stroke-width="1.8" marker-end="url(#arr-d3-4)">
+      <line x1="242" y1="59" x2="291" y2="59"/><line x1="538" y1="59" x2="587" y2="59"/><line x1="834" y1="59" x2="883" y2="59"/>
+    </g>
+  </svg>
+  <p>The scheduler compares each Pod's requests with the CPU and memory that are not yet reserved on each node. It ignores current usage (Kubernetes Authors, 2026).</p>
+  <aside class="notes">kube-scheduler watches for Pods that have no node assigned. For each one it runs two phases. Filtering removes nodes that cannot run the Pod: too little unreserved CPU or memory for its requests, a taint the Pod does not tolerate, a node selector that does not match, or a volume in another zone. Scoring ranks the remaining nodes with plugins, for example one that balances resource use and one that spreads Pods of the same app across nodes. The highest score wins, and ties are broken at random. The scheduler then binds the Pod by recording the node name. It never starts containers; the kubelet on that node does. Because only requests count, a Pod without requests looks free to the scheduler, which is why the Pod lecture asks you to set them. Borg used the same two steps, which its paper calls feasibility checking and scoring (Verma et al., 2015). Source: Kubernetes Authors (2026), Kubernetes Scheduler.</aside>
+</section>
+
+<section>
+  <h2>From Borg and Omega to Kubernetes</h2>
+  <svg class="diagram" viewBox="0 0 1128 172" role="img" aria-label="Three systems in order: Borg, then Omega, then Kubernetes">
+    <defs><marker id="arr-d3-5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#56676D"/></marker></defs>
+    <g fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5">
+      <rect x="0" y="10" width="340" height="150" rx="4"/><rect x="394" y="10" width="340" height="150" rx="4"/>
+      <rect x="788" y="10" width="340" height="150" rx="4" fill="#FFFFFF" stroke="#0B7A75" stroke-width="2.5"/>
+    </g>
+    <g text-anchor="middle" fill="#17262B">
+      <text x="170" y="62" font-size="20" font-weight="600">Borg</text>
+      <text x="170" y="96" font-size="16" fill="#56676D">Google's internal cluster manager</text>
+      <text x="170" y="122" font-size="16" fill="#56676D">batch and serving jobs together</text>
+      <text x="564" y="62" font-size="20" font-weight="600">Omega</text>
+      <text x="564" y="96" font-size="16" fill="#56676D">a redesign inside Google</text>
+      <text x="564" y="122" font-size="16" fill="#56676D">shared state, several schedulers</text>
+      <text x="958" y="62" font-size="20" font-weight="600">Kubernetes</text>
+      <text x="958" y="96" font-size="16" fill="#56676D">open source since 2014</text>
+      <text x="958" y="122" font-size="16" fill="#56676D">all state behind one REST API</text>
+    </g>
+    <g stroke="#56676D" stroke-width="1.8" marker-end="url(#arr-d3-5)">
+      <line x1="342" y1="85" x2="389" y2="85"/><line x1="736" y1="85" x2="783" y2="85"/>
+    </g>
+  </svg>
+  <p>Each system kept the ideas that worked in the one before it (Burns et al., 2016). In 2015, Borg ran hundreds of thousands of jobs on clusters of up to tens of thousands of machines (Verma et al., 2015).</p>
+  <aside class="notes">Kubernetes did not start from nothing. Google ran its services and batch jobs on Borg, and the Borg paper describes clusters of up to tens of thousands of machines. Omega was a later redesign. It kept the cluster state in one shared store and let several schedulers work in parallel, and many of its ideas went back into Borg. Kubernetes was the third system. Google released it as open source in 2014, version 1.0 followed in 2015, and Google gave it to the newly formed Cloud Native Computing Foundation. Burns and colleagues list lessons that Kubernetes took from the first two: group containers into Pods, give every Pod its own IP address, identify things by labels instead of numbers, and send every component through one API. Ask the class why a company would give away the design of its internal platform. Sources: Verma et al. (2015); Burns et al. (2016).</aside>
+</section>
+
+<section>
+  <h2>Desired state and reconciliation loops</h2>
+  <svg class="diagram" viewBox="0 0 1128 236" role="img" aria-label="A controller reads the desired state, watches the current state, and creates a Pod to close the difference">
+    <defs><marker id="arr-d3-6" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#56676D"/></marker></defs>
+    <g fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5">
+      <rect x="0" y="40" width="300" height="150" rx="4"/>
+      <rect x="414" y="40" width="300" height="150" rx="4" fill="#FFFFFF" stroke="#0B7A75" stroke-width="2.5"/>
+      <rect x="828" y="40" width="300" height="150" rx="4"/>
+    </g>
+    <g text-anchor="middle" fill="#17262B">
+      <text x="150" y="88" font-size="20" font-weight="600">Desired state</text>
+      <text x="150" y="118" font-size="16" fill="#56676D">spec, written by you</text>
+      <text x="150" y="152" font-size="17" font-family="Plex Mono, Menlo, monospace">replicas: 3</text>
+      <text x="564" y="88" font-size="20" font-weight="600">Controller</text>
+      <text x="564" y="118" font-size="16" fill="#56676D">observe, compare, act</text>
+      <text x="564" y="152" font-size="16" fill="#56676D">repeats in a loop</text>
+      <text x="978" y="88" font-size="20" font-weight="600">Current state</text>
+      <text x="978" y="118" font-size="16" fill="#56676D">status, from the cluster</text>
+      <text x="978" y="152" font-size="16" fill="#56676D">2 Pods running</text>
+      <text x="357" y="104" font-size="16" fill="#56676D">reads</text>
+      <text x="771" y="70" font-size="16" fill="#56676D">watches</text>
+      <text x="771" y="214" font-size="16" fill="#56676D">creates 1 Pod</text>
+    </g>
+    <g stroke="#56676D" stroke-width="1.8" marker-end="url(#arr-d3-6)">
+      <line x1="302" y1="116" x2="409" y2="116"/>
+      <line x1="826" y1="82" x2="719" y2="82"/>
+      <line x1="716" y1="168" x2="823" y2="168"/>
+    </g>
+  </svg>
+  <p>You declare what you want in the spec. Controllers act until the status matches it (Kubernetes Authors, 2026).</p>
+  <aside class="notes">This is the central design idea of Kubernetes. You do not tell the cluster to start three containers. You store an object that says three replicas should exist, and a controller compares that with what it observes. If one Pod is missing, it creates one. If there are four, it deletes one. It repeats the check whenever something changes and also at intervals, so it recovers from events it missed. The documentation compares a controller to a thermostat, which switches the heating on and off until the room reaches the temperature you set. Burns et al. (2016) describe Kubernetes as many small control loops, each reconciling one kind of object, with no central program giving orders. BagTrack example: in Lab 08 you delete a bag-api Pod and watch a replacement appear. Ask the class which controller notices the deleted Pod first, and what it does. Source: Kubernetes Authors (2026), Controllers.</aside>
+</section>
+
+<section>
+  <h2>Labels and selectors</h2>
+  <svg class="diagram" viewBox="0 0 1128 312" role="img" aria-label="A Service with the selector app=bag-api points to three bag-api Pods and not to the board Pod">
+    <defs><marker id="arr-d3-7" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#56676D"/></marker></defs>
+    <g fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5">
+      <rect x="404" y="0" width="320" height="90" rx="4" fill="#FFFFFF" stroke="#0B7A75" stroke-width="2.5"/>
+      <rect x="0" y="180" width="252" height="128" rx="4"/><rect x="292" y="180" width="252" height="128" rx="4"/>
+      <rect x="584" y="180" width="252" height="128" rx="4"/><rect x="876" y="180" width="252" height="128" rx="4"/>
+    </g>
+    <g text-anchor="middle" fill="#17262B">
+      <text x="564" y="38" font-size="20" font-weight="600">Service bag-api</text>
+      <text x="564" y="68" font-size="16" font-family="Plex Mono, Menlo, monospace" fill="#56676D">selector: app=bag-api</text>
+      <text x="126" y="218" font-size="20" font-weight="600">bag-api Pod</text>
+      <text x="418" y="218" font-size="20" font-weight="600">bag-api Pod</text>
+      <text x="710" y="218" font-size="20" font-weight="600">bag-api Pod</text>
+      <text x="1002" y="218" font-size="20" font-weight="600">board Pod</text>
+      <g font-size="16" font-family="Plex Mono, Menlo, monospace" fill="#56676D">
+        <text x="126" y="252">app=bag-api</text><text x="126" y="280">version=1.0</text>
+        <text x="418" y="252">app=bag-api</text><text x="418" y="280">version=1.0</text>
+        <text x="710" y="252">app=bag-api</text><text x="710" y="280">version=1.0.3</text>
+        <text x="1002" y="252">app=board</text><text x="1002" y="280">version=1.0</text>
+      </g>
+    </g>
+    <g stroke="#56676D" stroke-width="1.8" marker-end="url(#arr-d3-7)">
+      <line x1="520" y1="92" x2="140" y2="174"/><line x1="550" y1="92" x2="424" y2="174"/><line x1="580" y1="92" x2="700" y2="174"/>
+    </g>
+  </svg>
+  <p>Labels are name=value pairs on any object. Services, Deployments and kubectl find objects by selecting on their labels (Kubernetes Authors, 2026).</p>
+  <aside class="notes">Labels are how Kubernetes objects find each other. A label is a name=value pair, and a selector is a query over labels. The Service on this slide sends traffic to every Pod with app=bag-api, whoever created it. The board Pod has a different label, so it is not selected. Version labels let two versions run side by side behind one Service, which is how the rolling updates later today work. This loose coupling came from Borg experience. Borg grouped tasks into jobs and identified them by job name and index number, which made it hard to describe groups that cut across jobs; Kubernetes uses labels instead (Burns et al., 2016). A common mistake is a typo in a selector. The Service then has no endpoints, and calls from the board to bag-api fail. Ask the class what happens if a debug Pod that you start by hand gets the label app=bag-api. Source: Kubernetes Authors (2026), Labels and Selectors.</aside>
+</section>
+
+<section>
+  <h2>The control plane</h2>
+  <svg class="diagram" viewBox="0 0 1128 388" role="img" aria-label="kubectl and Headlamp call kube-apiserver, which stores objects in etcd; the scheduler, the controller manager and the kubelets watch and update through the API server">
+    <defs><marker id="arr-d3-8" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#56676D"/></marker></defs>
+    <g fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5">
+      <rect x="0" y="40" width="230" height="110" rx="4"/>
+      <rect x="310" y="20" width="460" height="150" rx="4" fill="#FFFFFF" stroke="#0B7A75" stroke-width="2.5"/>
+      <rect x="850" y="40" width="278" height="110" rx="4"/>
+      <rect x="0" y="282" width="340" height="100" rx="4"/><rect x="394" y="282" width="340" height="100" rx="4"/>
+      <rect x="788" y="282" width="340" height="100" rx="4"/>
+    </g>
+    <g text-anchor="middle" fill="#17262B">
+      <text x="115" y="88" font-size="20" font-weight="600">kubectl, Headlamp</text>
+      <text x="115" y="118" font-size="16" fill="#56676D">send requests</text>
+      <text x="540" y="70" font-size="20" font-weight="600">kube-apiserver</text>
+      <text x="540" y="102" font-size="16" fill="#56676D">REST API, authentication, validation</text>
+      <text x="540" y="128" font-size="16" fill="#56676D">the only component that uses etcd</text>
+      <text x="989" y="88" font-size="20" font-weight="600">etcd</text>
+      <text x="989" y="118" font-size="16" fill="#56676D">stores every object</text>
+      <text x="170" y="324" font-size="20" font-weight="600">kube-scheduler</text>
+      <text x="170" y="354" font-size="16" fill="#56676D">assigns Pods to nodes</text>
+      <text x="564" y="324" font-size="20" font-weight="600">kube-controller-manager</text>
+      <text x="564" y="354" font-size="16" fill="#56676D">runs the built-in controllers</text>
+      <text x="958" y="324" font-size="20" font-weight="600">kubelet on each node</text>
+      <text x="958" y="354" font-size="16" fill="#56676D">starts Pods, reports status</text>
+    </g>
+    <text x="576" y="232" font-size="16" fill="#56676D">watch and update</text>
+    <g stroke="#56676D" stroke-width="1.8" marker-end="url(#arr-d3-8)">
+      <line x1="232" y1="95" x2="305" y2="95"/><line x1="772" y1="95" x2="845" y2="95"/>
+      <line x1="200" y1="280" x2="420" y2="176"/><line x1="564" y1="280" x2="564" y2="176"/><line x1="928" y1="280" x2="708" y2="176"/>
+    </g>
+  </svg>
+  <p>Every component reads and changes cluster state through the API server (Kubernetes Authors, 2026).</p>
+  <aside class="notes">The control plane is the part of the cluster that makes decisions. kube-apiserver is the only entry point to the cluster's state. It authenticates each request, checks the object against its schema and the admission rules, and stores it in etcd. etcd is a consistent, replicated data store that holds every object in the cluster. kube-scheduler and kube-controller-manager never talk to each other. They watch the API server for changes and write their results back to it. The controller manager bundles many controllers, such as the ReplicaSet, Deployment, Job and EndpointSlice controllers. On EKS, AWS runs all of these components for you. In your k3s cluster they run inside one k3s server process, and with one server k3s stores the data in SQLite through kine instead of etcd (K3s Project Authors, 2026). Ask the class whether running Pods stop when the API server is down. They do not. Nodes keep their containers running, and only changes stop. Source: Kubernetes Authors (2026), Cluster Architecture.</aside>
+</section>
+
+<section>
+  <h2>What runs on every node</h2>
+  <svg class="diagram" viewBox="0 0 1128 360" role="img" aria-label="On a node, the kubelet calls containerd through the CRI, containerd calls runc, runc starts the Pod containers; kube-proxy and a CNI plugin also run on the node">
+    <defs><marker id="arr-d3-9" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#56676D"/></marker></defs>
+    <rect x="0" y="0" width="1128" height="356" rx="4" fill="#FFFFFF" stroke="#B9C8CA" stroke-width="1.5"/>
+    <text x="24" y="34" font-size="17" fill="#56676D">A node: a k3d container on your VM, or an EC2 instance in an EKS cluster</text>
+    <g fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5">
+      <rect x="24" y="58" width="236" height="112" rx="4" fill="#FFFFFF" stroke="#0B7A75" stroke-width="2.5"/>
+      <rect x="304" y="58" width="236" height="112" rx="4"/><rect x="584" y="58" width="236" height="112" rx="4"/>
+      <rect x="864" y="58" width="236" height="112" rx="4"/>
+      <rect x="24" y="222" width="520" height="110" rx="4"/><rect x="580" y="222" width="520" height="110" rx="4"/>
+    </g>
+    <g text-anchor="middle" fill="#17262B">
+      <text x="142" y="98" font-size="20" font-weight="600">kubelet</text>
+      <text x="142" y="126" font-size="16" fill="#56676D">runs the Pods that are</text>
+      <text x="142" y="150" font-size="16" fill="#56676D">assigned to this node</text>
+      <text x="422" y="98" font-size="20" font-weight="600">containerd</text>
+      <text x="422" y="126" font-size="16" fill="#56676D">pulls images and</text>
+      <text x="422" y="150" font-size="16" fill="#56676D">manages containers</text>
+      <text x="702" y="98" font-size="20" font-weight="600">runc</text>
+      <text x="702" y="126" font-size="16" fill="#56676D">creates namespaces</text>
+      <text x="702" y="150" font-size="16" fill="#56676D">and cgroups</text>
+      <text x="982" y="98" font-size="20" font-weight="600">Pod containers</text>
+      <text x="982" y="126" font-size="16" fill="#56676D">your application</text>
+      <text x="982" y="150" font-size="16" fill="#56676D">processes</text>
+      <text x="282" y="104" font-size="16" fill="#56676D">CRI</text>
+      <text x="284" y="266" font-size="20" font-weight="600">kube-proxy</text>
+      <text x="284" y="296" font-size="16" fill="#56676D">writes packet rules for Services</text>
+      <text x="840" y="266" font-size="20" font-weight="600">CNI plugin</text>
+      <text x="840" y="296" font-size="16" fill="#56676D">gives each Pod an IP address</text>
+      <text x="840" y="320" font-size="16" fill="#56676D">flannel in k3s, Amazon VPC CNI on EKS</text>
+    </g>
+    <g stroke="#56676D" stroke-width="1.8" marker-end="url(#arr-d3-9)">
+      <line x1="262" y1="118" x2="299" y2="118"/><line x1="542" y1="114" x2="579" y2="114"/><line x1="822" y1="114" x2="859" y2="114"/>
+    </g>
+  </svg>
+  <p>The kubelet talks to the container runtime through the Container Runtime Interface (CRI). Kubernetes removed its built-in Docker support in version 1.24 (Kubernetes Authors, 2026).</p>
+  <aside class="notes">Every node, including the k3s server in your lab, runs three node components. The kubelet watches the API server for Pods assigned to its node, asks the container runtime to start their containers, runs their probes, and reports status back. It talks to containerd through the Container Runtime Interface, a gRPC API. This is the same containerd you met under dockerd on Day 1, with no dockerd in between. kube-proxy watches Services and EndpointSlices and writes packet-forwarding rules; the Services lecture looks at those rules. The CNI plugin gives each Pod a network interface and an IP address that every other Pod can reach. k3s uses flannel by default. EKS uses the Amazon VPC CNI, which gives Pods IP addresses from the VPC's subnets. Ask the class whether docker ps on the VM will show bag-api's container. It will not. docker ps shows the k3d node containers, and bag-api runs inside one of them, under that node's containerd. Sources: Kubernetes Authors (2026), Node components; K3s Project Authors (2026).</aside>
+</section>
+
+<section>
+  <h2>Objects and manifests</h2>
+<pre><code>apiVersion: v1
+kind: Pod
+metadata:
+  name: bag-api
+  namespace: bagtrack
+  labels:
+    app: bag-api
+spec:
+  containers:
+  - name: bag-api
+    image: localhost:5000/bag-api:1.0
+    ports:
+    - containerPort: 8000</code></pre>
+  <p>You write <code>apiVersion</code>, <code>kind</code>, <code>metadata</code> and <code>spec</code>. The cluster adds <code>status</code>, which <code>kubectl get pod bag-api -n bagtrack -o yaml</code> shows (Kubernetes Authors, 2026).</p>
+  <aside class="notes">Every Kubernetes object has the same four top-level fields that you write. apiVersion and kind say which API type this is. Pods are in the core group at version v1, Deployments are apps/v1 and CronJobs are batch/v1. metadata holds the name, the namespace and the labels; the labs keep BagTrack in a namespace called bagtrack. spec is the desired state. The fifth field, status, is written by the controllers and the kubelet, and you never put it in a file. You send manifests with kubectl apply -f, which creates the object or updates it to match the file. Keep manifests in Git next to the code, the same habit as keeping the Dockerfile and compose.yaml in the repository. kubectl explain pod.spec.containers prints the documentation for any field, served by the API server itself. Ask the class what the ports field does, given that every Pod has its own IP address. It is mostly informational. It names the port, and leaving it out does not block traffic. Source: Kubernetes Authors (2026), Objects in Kubernetes.</aside>
+</section>
+
+<section>
+  <h2>How k3d runs a cluster on your lab machine</h2>
+  <svg class="diagram" viewBox="0 0 1128 412" role="img" aria-label="On the Ubuntu VM, Docker runs a load balancer container, a k3s server container, two k3s agent containers and the registry container">
+    <defs><marker id="arr-d3-11" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#56676D"/></marker></defs>
+    <rect x="0" y="0" width="1128" height="408" rx="4" fill="#FFFFFF" stroke="#B9C8CA" stroke-width="1.5"/>
+    <text x="24" y="34" font-size="18" font-weight="600" fill="#17262B">Your Ubuntu VM, with Docker Engine</text>
+    <g fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5">
+      <rect x="24" y="54" width="320" height="78" rx="4"/><rect x="784" y="54" width="320" height="78" rx="4"/>
+      <rect x="24" y="172" width="320" height="78" rx="4"/>
+      <rect x="24" y="290" width="320" height="100" rx="4" fill="#FFFFFF" stroke="#0B7A75" stroke-width="2.5"/>
+      <rect x="404" y="290" width="320" height="100" rx="4"/><rect x="784" y="290" width="320" height="100" rx="4"/>
+    </g>
+    <g text-anchor="middle" fill="#17262B">
+      <text x="184" y="86" font-size="20" font-weight="600">kubectl, Headlamp</text>
+      <text x="184" y="114" font-size="16" fill="#56676D">read your kubeconfig</text>
+      <text x="944" y="86" font-size="20" font-weight="600">registry container</text>
+      <text x="944" y="114" font-size="16" font-family="Plex Mono, Menlo, monospace" fill="#56676D">localhost:5000</text>
+      <text x="184" y="204" font-size="20" font-weight="600">load balancer container</text>
+      <text x="184" y="232" font-size="16" fill="#56676D">forwards the API and mapped ports</text>
+      <text x="184" y="324" font-size="20" font-weight="600">k3d-hub-server-0</text>
+      <text x="184" y="352" font-size="16" fill="#56676D">k3s server: control plane,</text>
+      <text x="184" y="374" font-size="16" fill="#56676D">kubelet, containerd</text>
+      <text x="564" y="324" font-size="20" font-weight="600">k3d-hub-agent-0</text>
+      <text x="564" y="352" font-size="16" fill="#56676D">k3s agent: kubelet,</text>
+      <text x="564" y="374" font-size="16" fill="#56676D">containerd, flannel</text>
+      <text x="944" y="324" font-size="20" font-weight="600">k3d-hub-agent-1</text>
+      <text x="944" y="352" font-size="16" fill="#56676D">k3s agent: kubelet,</text>
+      <text x="944" y="374" font-size="16" fill="#56676D">containerd, flannel</text>
+    </g>
+    <text x="956" y="206" font-size="16" fill="#56676D">image pulls through</text><text x="956" y="228" font-size="16" fill="#56676D">a registry mirror</text>
+    <g stroke="#56676D" stroke-width="1.8" marker-end="url(#arr-d3-11)">
+      <line x1="184" y1="134" x2="184" y2="167"/><line x1="184" y1="252" x2="184" y2="285"/>
+      <line x1="944" y1="288" x2="944" y2="137"/>
+    </g>
+  </svg>
+  <p>k3d runs each k3s node as a Docker container (k3d Authors, 2026). Pods run inside those containers, under each node's own containerd.</p>
+  <aside class="notes">This is the cluster you build in Lab 07. k3d is a small tool that runs k3s inside Docker, and k3s is a fully conformant Kubernetes distribution packaged as a single binary. The lab creates a cluster called hub with one server and two agents, so docker ps shows k3d-hub-server-0, k3d-hub-agent-0 and k3d-hub-agent-1. The server runs the control plane, and in k3s it also runs workloads. A separate load balancer container forwards the API port 6550 and the two ports the lab maps, 8081 and 30080, so kubectl and your browser reach the cluster from the VM. Each node pulls localhost:5000 images through a registry mirror that points at the registry you started on Day 1. Pods are containers inside the node containers, which is why docker ps shows nodes but not Pods. The lab turns off Traefik, the ingress controller that k3s installs by default, because ingress is outside this course. Sources: k3d Authors (2026); K3s Project Authors (2026).</aside>
+</section>
+
+<section>
+  <h2>k3d on your VM compared with Amazon EKS</h2>
+  <table>
+    <tr><th></th><th>k3d on your VM</th><th>Amazon EKS</th></tr>
+    <tr><td>Control plane</td><td>A k3s server container that you run</td><td>Run by AWS across several Availability Zones</td></tr>
+    <tr><td>Cluster data</td><td>SQLite through kine, because there is one server</td><td>etcd, encrypted with AWS KMS</td></tr>
+    <tr><td>Pod network</td><td>flannel</td><td>Amazon VPC CNI, with Pod IPs from the VPC</td></tr>
+    <tr><td>Worker nodes</td><td>Two k3s agent containers</td><td>Managed node groups of EC2 instances, or Fargate profiles</td></tr>
+    <tr><td>LoadBalancer Services</td><td>ServiceLB, on the nodes' ports</td><td>A Network Load Balancer from the AWS Load Balancer Controller</td></tr>
+    <tr><td>Storage</td><td>local-path, on one node's disk</td><td>Amazon EBS volumes through the EBS CSI driver</td></tr>
+  </table>
+  <p>Pods, Deployments and Services use the same manifests on both. Load balancer annotations and StorageClass names differ (Amazon Web Services, 2026; K3s Project Authors, 2026).</p>
+  <aside class="notes">This table shows what transfers from the lab to United's EKS clusters. The API, kubectl, manifests, probes, Deployments and Services behave the same way. What changes is everything AWS manages. EKS runs the API server and etcd across several Availability Zones, and since Kubernetes 1.28 it encrypts all API data with AWS KMS by default. The Amazon VPC CNI gives each Pod an IP address from the VPC, so security groups and other AWS services see Pods as ordinary VPC addresses. Managed node groups are EC2 Auto Scaling groups that EKS creates and updates. A Fargate profile selects Pods by namespace and labels and runs each one in its own isolated VM. Fargate Pods cannot use DaemonSets, privileged containers or EBS volumes. United also runs ECS with Fargate; the EKS version of Fargate runs Kubernetes Pods instead of ECS tasks. Ask the class which row would worry them most when they move a workload from k3d to EKS. Sources: Amazon Web Services (2026), Amazon EKS User Guide; K3s Project Authors (2026).</aside>
+</section>
+
+<section>
+  <h2>The Pod is the unit of scheduling</h2>
+  <svg class="diagram" viewBox="0 0 1128 292" role="img" aria-label="A Pod with one IP address holds a bag-api container and a scanner container; the scanner calls bag-api on localhost, and either container can mount the Pod's volumes">
+    <defs><marker id="arr-d3-13" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#56676D"/></marker></defs>
+    <rect x="0" y="0" width="1128" height="288" rx="4" fill="#FFFFFF" stroke="#B9C8CA" stroke-width="1.5"/>
+    <text x="24" y="36" font-size="18" font-weight="600" fill="#17262B">Pod with one IP address, such as 10.42.1.7</text>
+    <g fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5">
+      <rect x="40" y="62" width="400" height="100" rx="4" fill="#FFFFFF" stroke="#0B7A75" stroke-width="2.5"/>
+      <rect x="688" y="62" width="400" height="100" rx="4"/>
+      <rect x="364" y="196" width="400" height="72" rx="4"/>
+    </g>
+    <g text-anchor="middle" fill="#17262B">
+      <text x="240" y="104" font-size="20" font-weight="600">bag-api container</text>
+      <text x="240" y="134" font-size="16" fill="#56676D">listens on port 8000</text>
+      <text x="888" y="104" font-size="20" font-weight="600">scanner container</text>
+      <text x="888" y="134" font-size="16" fill="#56676D">calls http://localhost:8000</text>
+      <text x="564" y="100" font-size="16" fill="#56676D">localhost</text>
+      <text x="564" y="226" font-size="20" font-weight="600">Pod volumes</text>
+      <text x="564" y="252" font-size="16" fill="#56676D">either container can mount them</text>
+    </g>
+    <g stroke="#B9C8CA" stroke-width="1.5"><line x1="240" y1="164" x2="362" y2="232"/><line x1="888" y1="164" x2="766" y2="232"/></g>
+    <g stroke="#56676D" stroke-width="1.8" marker-end="url(#arr-d3-13)"><line x1="686" y1="112" x2="446" y2="112"/></g>
+  </svg>
+  <p>The scheduler places a whole Pod on one node. Its containers share the Pod's network namespace and can share volumes (Kubernetes Authors, 2026).</p>
+  <aside class="notes">A Pod is the smallest thing Kubernetes schedules. It is a group of one or more containers that always run together on the same node. They share one network namespace, so they have one IP address and reach each other on localhost. That is also why two containers in one Pod cannot listen on the same port. They can also mount the same volumes, so one container can read files that another writes. On Day 1 you looked at namespaces in /proc/&lt;pid&gt;/ns; a Pod is a set of containers that join the same network and IPC namespaces. Burns et al. (2016) describe the Pod as the Kubernetes version of Borg's alloc, a resource envelope that held a main program and its helpers. Most Pods have a single container. In Lab 07 you run the scanner next to bag-api in one Pod, and the scanner calls http://localhost:8000. Ask the class what would have to change if the two ran in separate Pods. Source: Kubernetes Authors (2026), Pods.</aside>
+</section>
+
+<section>
+  <h2>The Pod lifecycle and restart policy</h2>
+  <svg class="diagram" viewBox="0 0 1128 352" role="img" aria-label="Pod phases Pending, Running, then Succeeded or Failed, and the three restartPolicy values Always, OnFailure and Never">
+    <defs><marker id="arr-d3-14" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#56676D"/></marker></defs>
+    <g fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5">
+      <rect x="0" y="40" width="250" height="110" rx="4"/>
+      <rect x="320" y="40" width="250" height="110" rx="4" fill="#FFFFFF" stroke="#0B7A75" stroke-width="2.5"/>
+      <rect x="660" y="0" width="468" height="80" rx="4"/><rect x="660" y="110" width="468" height="80" rx="4"/>
+      <rect x="0" y="256" width="360" height="92" rx="4"/><rect x="384" y="256" width="360" height="92" rx="4"/>
+      <rect x="768" y="256" width="360" height="92" rx="4"/>
+    </g>
+    <g text-anchor="middle" fill="#17262B">
+      <text x="125" y="82" font-size="20" font-weight="600">Pending</text>
+      <text x="125" y="110" font-size="16" fill="#56676D">accepted, waiting for</text>
+      <text x="125" y="132" font-size="16" fill="#56676D">a node or an image</text>
+      <text x="445" y="82" font-size="20" font-weight="600">Running</text>
+      <text x="445" y="110" font-size="16" fill="#56676D">on a node, at least one</text>
+      <text x="445" y="132" font-size="16" fill="#56676D">container running</text>
+      <text x="894" y="34" font-size="20" font-weight="600">Succeeded</text>
+      <text x="894" y="62" font-size="16" fill="#56676D">every container exited with code 0</text>
+      <text x="894" y="144" font-size="20" font-weight="600">Failed</text>
+      <text x="894" y="172" font-size="16" fill="#56676D">all containers stopped, at least one with an error</text>
+      <text x="180" y="294" font-size="20" font-weight="600" font-family="Plex Mono, Menlo, monospace">Always</text>
+      <text x="180" y="324" font-size="16" fill="#56676D">the default, restart after any exit</text>
+      <text x="564" y="294" font-size="20" font-weight="600" font-family="Plex Mono, Menlo, monospace">OnFailure</text>
+      <text x="564" y="324" font-size="16" fill="#56676D">restart after a non-zero exit code</text>
+      <text x="948" y="294" font-size="20" font-weight="600" font-family="Plex Mono, Menlo, monospace">Never</text>
+      <text x="948" y="324" font-size="16" fill="#56676D">leave the container stopped</text>
+    </g>
+    <text x="0" y="240" font-size="17" fill="#56676D">restartPolicy, set once for the whole Pod</text>
+    <g stroke="#56676D" stroke-width="1.8" marker-end="url(#arr-d3-14)">
+      <line x1="252" y1="95" x2="315" y2="95"/><line x1="572" y1="80" x2="655" y2="46"/><line x1="572" y1="112" x2="655" y2="146"/>
+    </g>
+  </svg>
+  <p>Before each restart the kubelet waits twice as long as before, from 10 seconds up to 300. While it waits, the container shows CrashLoopBackOff (Kubernetes Authors, 2026).</p>
+  <aside class="notes">A Pod's phase is a summary. Pending means the API server accepted the Pod but it is not running yet. It may be waiting for the scheduler, or the node may still be pulling the image. Running means it is bound to a node and at least one container is running or restarting. Succeeded and Failed are end states, which matter for Jobs. restartPolicy applies to all containers in the Pod. Deployments require Always; Jobs use OnFailure or Never. When a container keeps exiting, the kubelet doubles the delay before each restart, up to five minutes, and resets it after ten minutes of normal running. During the wait the container is in the Waiting state with the reason CrashLoopBackOff, while the Pod phase stays Running. On deletion, the kubelet sends SIGTERM, waits 30 seconds by default, and then sends SIGKILL, which matches the exit codes 143 and 137 from Day 1. Ask the class what kubectl get pods shows for a container that exits with code 1 every time it starts. Source: Kubernetes Authors (2026), Pod Lifecycle.</aside>
+</section>
+
+<section>
+  <h2>Liveness, readiness and startup probes</h2>
+  <table>
+    <tr><th>Probe</th><th>Question it answers</th><th>When it fails</th><th>bag-api</th></tr>
+    <tr><td>Liveness</td><td>Is the process still working?</td><td>The kubelet restarts the container</td><td><code>/healthz</code></td></tr>
+    <tr><td>Readiness</td><td>Can it serve requests now?</td><td>The Pod leaves the Service's endpoints until it passes</td><td><code>/readyz</code>, which also checks Postgres</td></tr>
+    <tr><td>Startup</td><td>Has the app finished starting?</td><td>The kubelet restarts the container. The other probes wait until it passes.</td><td>Not needed</td></tr>
+  </table>
+  <p>Liveness should check only the process itself. If it also checked Postgres, one database outage would restart every bag-api Pod (Kubernetes Authors, 2026).</p>
+  <aside class="notes">Probes tell the kubelet whether your app works, because a running process is not always a working one. A probe can be an HTTP GET, a TCP connection, a gRPC health check or a command. By default it runs every 10 seconds, times out after 1 second, and counts as failed after 3 failures in a row. Liveness decides whether the container should be restarted. Readiness decides whether it should get traffic. A failing readiness probe takes the Pod out of the Service's endpoints, and a passing one puts it back. A startup probe protects slow starters by holding off the other two probes until it passes. bag-api follows the usual split. /healthz answers while the process works, and /readyz also checks Postgres. In Lab 07, DATABASE_URL points at a database that does not exist yet. The Pod shows READY 0/1 with 0 restarts, because /readyz returns 503 while /healthz passes. Ask the class which probe a service with a slow cache warm-up needs. Source: Kubernetes Authors (2026), Liveness, Readiness and Startup Probes.</aside>
+</section>
+
+<section>
+  <h2>Requests and limits</h2>
+<pre><code>containers:
+- name: bag-api
+  image: localhost:5000/bag-api:1.0
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 256Mi</code></pre>
+  <p>The scheduler uses requests to choose a node. Through cgroups, a CPU limit slows the container down, and a memory limit kills it with exit code 137 and the reason OOMKilled (Kubernetes Authors, 2026).</p>
+  <aside class="notes">Requests and limits connect the scheduler slide to the cgroups from Day 1. A request is what the scheduler reserves on a node. 250m means 250 millicores, a quarter of one CPU, and 256Mi is 256 mebibytes. A limit is the most the container may use, and the kubelet turns it into cgroup settings. CPU time can be shared out, so a container over its CPU limit is throttled and runs slower. Memory cannot be taken back, so a container over its memory limit is killed by the kernel's OOM killer. Kubernetes then reports the reason OOMKilled and exit code 137, as you saw with docker run --memory on Day 1. Some teams leave out the CPU limit to avoid throttling; that trades predictable performance for the use of idle CPU. ECS asks for similar numbers, cpu and memory, in the task definition. Ask the class what happens to a Pod that requests 20 CPUs on our 8-vCPU nodes. It stays Pending, and kubectl describe shows Insufficient cpu. Source: Kubernetes Authors (2026), Resource Management for Pods and Containers.</aside>
+</section>
+
+<section>
+  <h2>Quality of service classes</h2>
+  <table>
+    <tr><th>Class</th><th>When a Pod gets it</th><th>When the node runs short of memory</th></tr>
+    <tr><td>Guaranteed</td><td>Every container sets CPU and memory limits, with requests equal to them</td><td>Evicted last</td></tr>
+    <tr><td>Burstable</td><td>At least one container sets a request or a limit</td><td>Evicted after all BestEffort Pods</td></tr>
+    <tr><td>BestEffort</td><td>No container sets any request or limit</td><td>Evicted first</td></tr>
+  </table>
+  <p>Kubernetes assigns the class from the resources you set. The bag-api settings on the previous slide give a Burstable Pod (Kubernetes Authors, 2026).</p>
+  <aside class="notes">Kubernetes puts every Pod into one of three quality of service classes, based only on the requests and limits you set. You do not set the class yourself. When a node runs short of memory, the kubelet evicts Pods to protect the node. It evicts BestEffort Pods first, then Burstable Pods, and Guaranteed Pods last. To be Guaranteed, every container in the Pod needs CPU and memory limits, with requests equal to those limits. The class also sets the kernel's OOM score for the containers, so under pressure the kernel kills BestEffort processes first. A sensible default for services like bag-api and Postgres is to set requests that match their normal use, plus a memory limit. Avoid BestEffort Pods in shared clusters, because they are the first to go. The bag-api example is Burstable because its CPU request and CPU limit differ. Ask the class which class the scanner's Pods would get if its Deployment set no resources at all. Source: Kubernetes Authors (2026), Pod Quality of Service Classes.</aside>
+</section>
+
+<section>
+  <h2>Multi-container patterns</h2>
+  <svg class="diagram" viewBox="0 0 1128 316" role="img" aria-label="Four patterns: a sidecar next to the app, an ambassador that proxies the app's calls, an adapter that converts its output, and an init container that runs before the app">
+    <defs><marker id="arr-d3-18" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#56676D"/></marker></defs>
+    <g fill="#FFFFFF" stroke="#B9C8CA" stroke-width="1.5">
+      <rect x="0" y="0" width="264" height="312" rx="4"/><rect x="288" y="0" width="264" height="312" rx="4"/>
+      <rect x="576" y="0" width="264" height="312" rx="4"/><rect x="864" y="0" width="264" height="312" rx="4"/>
+    </g>
+    <g fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5">
+      <rect x="32" y="60" width="200" height="54" rx="4"/><rect x="32" y="158" width="200" height="54" rx="4"/>
+      <rect x="320" y="60" width="200" height="54" rx="4"/><rect x="320" y="158" width="200" height="54" rx="4"/>
+      <rect x="608" y="60" width="200" height="54" rx="4"/><rect x="608" y="158" width="200" height="54" rx="4"/>
+      <rect x="896" y="60" width="200" height="54" rx="4"/><rect x="896" y="158" width="200" height="54" rx="4"/>
+    </g>
+    <g text-anchor="middle" fill="#17262B">
+      <text x="132" y="36" font-size="20" font-weight="600">Sidecar</text>
+      <text x="420" y="36" font-size="20" font-weight="600">Ambassador</text>
+      <text x="708" y="36" font-size="20" font-weight="600">Adapter</text>
+      <text x="996" y="36" font-size="20" font-weight="600">Init container</text>
+      <g font-size="18">
+        <text x="132" y="93">app</text><text x="132" y="191">log shipper</text>
+        <text x="420" y="93">app</text><text x="420" y="191">ambassador</text>
+        <text x="708" y="93">app</text><text x="708" y="191">adapter</text>
+        <text x="996" y="93">init container</text><text x="996" y="191">app</text>
+      </g>
+      <g font-size="16" fill="#56676D">
+        <text x="132" y="256">adds a function, such as</text><text x="132" y="280">shipping logs</text>
+        <text x="420" y="256">proxies the app's calls</text><text x="420" y="280">to other services</text>
+        <text x="708" y="256">converts output to a</text><text x="708" y="280">standard format</text>
+        <text x="996" y="256">runs to completion</text><text x="996" y="280">before the app starts</text>
+      </g>
+    </g>
+    <g font-size="15" fill="#56676D">
+      <text x="142" y="141">files</text><text x="430" y="141">localhost</text><text x="718" y="141">raw metrics</text><text x="1006" y="141">then</text>
+    </g>
+    <g stroke="#56676D" stroke-width="1.8" marker-end="url(#arr-d3-18)">
+      <line x1="132" y1="116" x2="132" y2="153"/><line x1="420" y1="116" x2="420" y2="153"/>
+      <line x1="708" y1="116" x2="708" y2="153"/><line x1="996" y1="116" x2="996" y2="153"/>
+    </g>
+  </svg>
+  <p>Burns and Oppenheimer (2016) named the sidecar, ambassador and adapter patterns. Init containers are the Kubernetes feature for setup steps that must finish first.</p>
+  <aside class="notes">Burns and Oppenheimer, both co-authors of the Borg, Omega and Kubernetes paper, described patterns for containers that cooperate inside one Pod. A sidecar extends the main container, for example a log shipper that reads its log files, or a process that syncs files from Git. An ambassador stands between the app and other services. The app calls a local proxy on localhost, and the proxy knows how to reach a sharded cache or a database. An adapter turns the app's output into a standard format, for example metrics in the format that the monitoring system expects. Init containers are a Kubernetes feature. They run one after another, to completion, before the app containers start, so they suit waiting for a dependency or preparing files. The first three patterns make helpers reusable, because the same log shipper image can run beside any app. Ask the class which pattern a service mesh proxy such as Envoy follows. It is an ambassador, although meshes call it a sidecar. Sources: Burns and Oppenheimer (2016); Kubernetes Authors (2026), Init Containers.</aside>
+</section>
+
+<section>
+  <h2>Init containers and native sidecar containers</h2>
+<pre><code>spec:
+  initContainers:
+  - name: wait-for-db
+    image: public.ecr.aws/docker/library/busybox:1.37
+    command: ["sh", "-c", "until nc -z bagtrack-db 5432; do sleep 2; done"]
+  - name: log-shipper
+    image: public.ecr.aws/docker/library/busybox:1.37
+    restartPolicy: Always
+    command: ["sh", "-c", "tail -F /logs/access.log"]
+  containers:
+  - name: bag-api
+    image: localhost:5000/bag-api:1.0</code></pre>
+  <p>Init containers run one after another and must finish before the app starts. An init container with <code>restartPolicy: Always</code> is a native sidecar, stable since Kubernetes 1.33 (Kubernetes Authors, 2026).</p>
+  <aside class="notes">Here are both kinds in one Pod spec. wait-for-db is a classic init container. It uses busybox's nc to test the Postgres port, loops until the database answers, and exits. Lab 09 adds this init container to bag-api. Only after it exits does the kubelet start the next init container. log-shipper is listed under initContainers but has restartPolicy set to Always, which makes it a native sidecar. The kubelet starts it before bag-api, keeps it running for the whole life of the Pod, restarts it if it fails, and stops it after bag-api has stopped. Before this feature, a sidecar was a second regular container with no start order, and it kept Jobs from finishing, because a Job waits for every container to exit. The log-shipper is an example only, and the shared volume it reads is left out to keep the slide short. Ask the class what kubectl get pods shows for this Pod while the bagtrack-db Service does not exist yet. Source: Kubernetes Authors (2026), Init Containers and Sidecar Containers.</aside>
+</section>
+
+<section>
+  <h2>Three ways to use a ConfigMap</h2>
+  <svg class="diagram" viewBox="0 0 1128 330" role="img" aria-label="A ConfigMap with the entries HUB and SEED reaches a container as env, as envFrom, or as files in a volume">
+    <defs><marker id="arr-d3-20" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#56676D"/></marker></defs>
+    <g fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5">
+      <rect x="0" y="72" width="340" height="184" rx="4" fill="#FFFFFF" stroke="#0B7A75" stroke-width="2.5"/>
+      <rect x="500" y="0" width="628" height="88" rx="4"/><rect x="500" y="120" width="628" height="88" rx="4"/>
+      <rect x="500" y="240" width="628" height="88" rx="4"/>
+    </g>
+    <g text-anchor="middle" fill="#17262B">
+      <text x="170" y="112" font-size="20" font-weight="600">ConfigMap</text>
+      <text x="170" y="142" font-size="17" font-family="Plex Mono, Menlo, monospace" fill="#56676D">bag-api-config</text>
+      <text x="170" y="188" font-size="17" font-family="Plex Mono, Menlo, monospace">HUB</text>
+      <text x="170" y="218" font-size="17" font-family="Plex Mono, Menlo, monospace">SEED</text>
+      <text x="814" y="36" font-size="19" font-weight="600" font-family="Plex Mono, Menlo, monospace">env</text>
+      <text x="814" y="66" font-size="16" fill="#56676D">one entry becomes one variable, such as HUB</text>
+      <text x="814" y="156" font-size="19" font-weight="600" font-family="Plex Mono, Menlo, monospace">envFrom</text>
+      <text x="814" y="186" font-size="16" fill="#56676D">every entry becomes a variable</text>
+      <text x="814" y="276" font-size="20" font-weight="600">configMap volume</text>
+      <text x="814" y="306" font-size="16" fill="#56676D">every entry becomes a file, such as one named HUB</text>
+    </g>
+    <g stroke="#56676D" stroke-width="1.8" marker-end="url(#arr-d3-20)">
+      <line x1="342" y1="150" x2="495" y2="48"/><line x1="342" y1="164" x2="495" y2="164"/><line x1="342" y1="178" x2="495" y2="280"/>
+    </g>
+  </svg>
+  <p>Variables are set once, when the container starts. Mounted files are updated after the ConfigMap changes (Kubernetes Authors, 2026).</p>
+  <aside class="notes">A ConfigMap stores configuration that is not secret as name-value pairs, up to 1 MiB in total, so the same image can run in every environment. This is the twelve-factor rule from Day 1, which keeps configuration in the environment and out of the image (Wiggins, 2011). In the labs, the ConfigMap bag-api-config holds HUB and SEED. APP_VERSION stays out of it, because it is set as a build argument and describes the image itself. env with configMapKeyRef picks one entry and names the variable. envFrom turns every entry into a variable. A configMap volume writes every entry as a file, which suits whole files such as an nginx configuration. Variables are fixed when the container starts. Mounted files change after the kubelet's next sync, except when they are mounted with subPath, so kubectl rollout restart is the usual way to apply a change. ECS has no ConfigMap; a task definition holds environment variables or points to an environment file in S3. Ask the class why DATABASE_URL belongs in a Secret. Source: Kubernetes Authors (2026), ConfigMaps.</aside>
+</section>
+
+<section>
+  <h2>How Kubernetes stores and protects Secrets</h2>
+  <ul>
+    <li>Secret values are only base64-encoded, so anyone who can read a Secret can decode it</li>
+    <li>etcd holds Secrets unencrypted unless encryption at rest is turned on (Kubernetes Authors, 2026)</li>
+    <li>k3s turns encryption on with <code>--secrets-encryption</code>, and EKS encrypts all API data with AWS KMS by default (Amazon Web Services, 2026)</li>
+    <li>RBAC limits who can read Secrets, but anyone who can create a Pod in a namespace can mount its Secrets</li>
+    <li>External stores such as AWS Secrets Manager keep the value outside the cluster and mount it into Pods</li>
+  </ul>
+  <p>Pods use Secrets in the same ways as ConfigMaps, as variables or as files.</p>
+  <aside class="notes">A Secret is stored and used much like a ConfigMap, and Kubernetes adds only a few protections. In the labs, the Secret bag-api-db gives bag-api its DATABASE_URL, and the Secret bagtrack-db holds the Postgres password. The values in a manifest are only base64-encoded, and base64 -d reverses them. By default the API server writes Secrets to etcd unencrypted, so anyone with access to etcd or its backups can read them. k3s has the --secrets-encryption flag to turn on encryption at rest, and EKS encrypts all Kubernetes API data with AWS KMS by default from version 1.28. RBAC rules decide who may get or list Secrets. Because a Pod can mount any Secret in its namespace, permission to create Pods also gives access to Secrets. On EKS, the AWS Secrets and Configuration Provider for the Secrets Store CSI Driver mounts values from AWS Secrets Manager into Pods. ECS reads the same stores through the secrets field of a task definition. Sources: Kubernetes Authors (2026), Secrets; K3s Project Authors (2026); Amazon Web Services (2026).</aside>
+</section>
+
+<section>
+  <h2>Lab 07: A cluster and its first Pods</h2>
+  <div class="lab-path">labs/07-pods.md</div>
+  <ul class="lab-steps">
+    <li>Install kubectl, k3d and Headlamp, and create the three-node cluster <code>hub</code></li>
+    <li>Explore the nodes, the system Pods and the API</li>
+    <li>Run bag-api as a Pod with liveness and readiness probes</li>
+    <li>Give it settings from the ConfigMap <code>bag-api-config</code> and the Secret <code>bag-api-db</code></li>
+    <li>Run bag-api and the scanner as two containers in one Pod that share localhost</li>
+  </ul>
+  <aside class="notes">Send the class to Lab 07. Everything runs on their own VM. They create the cluster hub with k3d. It is three Docker containers, and its images come from the registry they started on Day 1. kube-system then shows CoreDNS, the local-path provisioner and metrics-server; Traefik is turned off because ingress is outside the course. Headlamp is the desktop app from the Kubernetes SIG UI project, and it reads the same ~/.kube/config as kubectl. The older Kubernetes Dashboard was archived in January 2026. bag-api gets HUB and SEED from the ConfigMap bag-api-config and DATABASE_URL from the Secret bag-api-db. That database does not exist yet, so bag-api shows READY 0/1 with 0 restarts, which is correct. The two-container Pod then runs the scanner next to bag-api, and the scanner calls it on localhost. A Pod stuck in ImagePullBackOff usually has a typo in its image name or tag, and kubectl describe pod shows the reason in its Events. Source: labs/07-pods.md in the course repository.</aside>
+</section>
+
+<section>
+  <h2>Services and EndpointSlices</h2>
+  <svg class="diagram" viewBox="0 0 1128 400" role="img" aria-label="The board Pod calls the bag-api Service, which uses an EndpointSlice listing two ready Pods and one Pod that is not ready; the EndpointSlice controller writes the list">
+    <defs><marker id="arr-d3-23" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#56676D"/></marker></defs>
+    <g fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5">
+      <rect x="0" y="110" width="220" height="100" rx="4"/>
+      <rect x="290" y="70" width="320" height="180" rx="4" fill="#FFFFFF" stroke="#0B7A75" stroke-width="2.5"/>
+      <rect x="680" y="30" width="448" height="260" rx="4"/>
+      <rect x="680" y="330" width="448" height="68" rx="4"/>
+    </g>
+    <g text-anchor="middle" fill="#17262B">
+      <text x="110" y="152" font-size="20" font-weight="600">board Pod</text>
+      <text x="110" y="182" font-size="16" fill="#56676D">calls bag-api:8000</text>
+      <text x="450" y="112" font-size="20" font-weight="600">Service bag-api</text>
+      <text x="450" y="144" font-size="16" fill="#56676D">ClusterIP 10.43.12.7</text>
+      <text x="450" y="174" font-size="16" font-family="Plex Mono, Menlo, monospace" fill="#56676D">selector: app=bag-api</text>
+      <text x="450" y="204" font-size="16" fill="#56676D">port 8000</text>
+      <text x="904" y="70" font-size="20" font-weight="600">EndpointSlice for bag-api</text>
+      <text x="904" y="98" font-size="16" font-family="Plex Mono, Menlo, monospace" fill="#56676D">kubernetes.io/service-name=bag-api</text>
+      <text x="904" y="250" font-size="16" fill="#56676D">only ready endpoints get new traffic</text>
+      <text x="904" y="358" font-size="20" font-weight="600">EndpointSlice controller</text>
+      <text x="904" y="384" font-size="16" fill="#56676D">keeps the list current as Pods change</text>
+    </g>
+    <g font-size="17" font-family="Plex Mono, Menlo, monospace" fill="#17262B">
+      <text x="730" y="138">10.42.0.12:8000</text><text x="960" y="138">ready</text>
+      <text x="730" y="170">10.42.1.8:8000</text><text x="960" y="170">ready</text>
+      <text x="730" y="202" fill="#56676D">10.42.2.5:8000</text><text x="960" y="202" fill="#56676D">not ready</text>
+    </g>
+    <text x="916" y="320" font-size="16" fill="#56676D">writes</text>
+    <g stroke="#56676D" stroke-width="1.8" marker-end="url(#arr-d3-23)">
+      <line x1="222" y1="160" x2="285" y2="160"/><line x1="612" y1="160" x2="675" y2="160"/><line x1="904" y1="328" x2="904" y2="295"/>
+    </g>
+  </svg>
+  <p>A Service gives a changing set of Pods one stable name, IP address and port. The EndpointSlice controller lists the Pods behind it, up to 100 per slice (Kubernetes Authors, 2026).</p>
+  <aside class="notes">Pods come and go, and each new Pod gets a new IP address, so clients need something that stays the same. A Service gives them a stable name, a virtual IP address called the ClusterIP, and a port. Its selector decides which Pods belong to it. The EndpointSlice controller watches those Pods and writes their addresses and ports into EndpointSlice objects. Each slice has the label kubernetes.io/service-name=bag-api, so kubectl -n bagtrack get endpointslices -l kubernetes.io/service-name=bag-api finds them. Only ready endpoints get new traffic, which is how a failing readiness probe takes a Pod out of rotation. EndpointSlices replace the older Endpoints API, which kept every address of a Service in one object; slices of up to 100 endpoints keep each update small in large clusters. ECS does the same job with an ALB target group. The ECS service registers each task's IP address, and the target group's health check decides which tasks get traffic. Ask the class what kubectl get endpointslices shows for a Service whose selector has a typo. Source: Kubernetes Authors (2026), Service and EndpointSlices.</aside>
+</section>
+
+<section>
+  <h2>Service types</h2>
+  <table>
+    <tr><th>Type</th><th>Reachable from</th><th>What it adds</th><th>Typical use</th></tr>
+    <tr><td>ClusterIP</td><td>Inside the cluster</td><td>A virtual IP and a DNS name</td><td>bag-api, called by the board and the scanner</td></tr>
+    <tr><td>NodePort</td><td>Every node's IP, on a port from 30000 to 32767</td><td>A port on every node</td><td>Labs and tests</td></tr>
+    <tr><td>LoadBalancer</td><td>Outside, through a load balancer</td><td>An external load balancer in front of the nodes or Pods</td><td>The board, for users</td></tr>
+    <tr><td>Headless</td><td>Inside the cluster</td><td>DNS records for each Pod, with no virtual IP</td><td>Postgres in a StatefulSet</td></tr>
+  </table>
+  <p>NodePort includes a ClusterIP, and LoadBalancer includes a NodePort by default. A headless Service sets <code>clusterIP: None</code> (Kubernetes Authors, 2026).</p>
+  <aside class="notes">Choose the type by asking who needs to reach the Service. ClusterIP is the default and serves traffic inside the cluster; most Services are this type. NodePort opens the same port, from 30000 to 32767 by default, on every node and forwards it to the Service. Lab 08 opens the board on NodePort 30080, which is handy in a lab and rarely used alone in production. LoadBalancer asks a controller to create an external load balancer in front of the nodes or the Pods. In k3s, ServiceLB does this with a small Pod on each node that listens on the Service port, and in the lab the k3d load balancer makes it reachable at localhost:8081. On EKS, the AWS Load Balancer Controller creates a Network Load Balancer. A headless Service sets clusterIP to None. It has no virtual IP, and DNS returns the Pod addresses instead, which StatefulSets need. Ask the class which type they would choose for Postgres, and why they would not choose LoadBalancer. Sources: Kubernetes Authors (2026), Service; K3s Project Authors (2026).</aside>
+</section>
+
+<section>
+  <h2>DNS names for Services</h2>
+  <table>
+    <tr><th>Name that a Pod looks up</th><th>Works from</th></tr>
+    <tr><td><code>bag-api</code></td><td>Pods in the same namespace</td></tr>
+    <tr><td><code>bag-api.bagtrack</code></td><td>Pods in any namespace</td></tr>
+    <tr><td><code>bag-api.bagtrack.svc.cluster.local</code></td><td>Anywhere in the cluster, as the fully qualified name</td></tr>
+    <tr><td><code>bagtrack-db-0.bagtrack-db</code></td><td>One Pod of a StatefulSet, through its headless Service</td></tr>
+  </table>
+  <p>CoreDNS answers these lookups. The kubelet writes search domains into each Pod's <code>/etc/resolv.conf</code>, which makes the short names work (Kubernetes Authors, 2026).</p>
+  <aside class="notes">Every Service gets a DNS name built from the Service name, the namespace, svc and the cluster domain. The labs put BagTrack in a namespace called bagtrack. The cluster DNS server, CoreDNS, runs as Pods in kube-system and watches Services through the API. The kubelet writes each Pod's /etc/resolv.conf with the CoreDNS address and a list of search domains. That is why the short name bag-api works inside the same namespace, the same way it worked on a Docker user-defined network on Day 1. For a normal Service, the name resolves to the ClusterIP. For a headless Service, it resolves to the addresses of the ready Pods, and each StatefulSet Pod also gets its own name, such as bagtrack-db-0.bagtrack-db in Lab 09. In Lab 08 you look these names up from a debug Pod. Ask the class why a Pod in another namespace cannot reach bag-api by its short name. Source: Kubernetes Authors (2026), DNS for Services and Pods.</aside>
+</section>
+
+<section>
+  <h2>What kube-proxy programs</h2>
+  <svg class="diagram" viewBox="0 0 1128 304" role="img" aria-label="kube-proxy watches the API server and writes packet rules in the kernel; a connection from the board Pod to the ClusterIP is rewritten to one of two bag-api Pods">
+    <defs><marker id="arr-d3-26" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#56676D"/></marker></defs>
+    <g fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5">
+      <rect x="0" y="0" width="280" height="80" rx="4"/><rect x="0" y="170" width="280" height="90" rx="4"/>
+      <rect x="380" y="0" width="360" height="80" rx="4"/>
+      <rect x="380" y="150" width="360" height="150" rx="4" fill="#FFFFFF" stroke="#0B7A75" stroke-width="2.5"/>
+      <rect x="840" y="100" width="288" height="80" rx="4"/><rect x="840" y="210" width="288" height="80" rx="4"/>
+    </g>
+    <g text-anchor="middle" fill="#17262B">
+      <text x="140" y="34" font-size="20" font-weight="600">API server</text>
+      <text x="140" y="62" font-size="16" fill="#56676D">Services, EndpointSlices</text>
+      <text x="140" y="208" font-size="20" font-weight="600">kube-proxy</text>
+      <text x="140" y="236" font-size="16" fill="#56676D">runs on every node</text>
+      <text x="560" y="34" font-size="20" font-weight="600">board Pod</text>
+      <text x="560" y="62" font-size="16" fill="#56676D">connects to 10.43.12.7:8000</text>
+      <text x="560" y="188" font-size="20" font-weight="600">Packet rules in the kernel</text>
+      <text x="560" y="218" font-size="16" fill="#56676D">iptables or nftables</text>
+      <text x="560" y="246" font-size="16" fill="#56676D">pick one ready endpoint</text>
+      <text x="560" y="270" font-size="16" fill="#56676D">and rewrite the address</text>
+      <text x="984" y="134" font-size="20" font-weight="600">bag-api Pod</text>
+      <text x="984" y="160" font-size="16" fill="#56676D">10.42.0.12:8000</text>
+      <text x="984" y="244" font-size="20" font-weight="600">bag-api Pod</text>
+      <text x="984" y="270" font-size="16" fill="#56676D">10.42.1.8:8000, on another node</text>
+      <text x="328" y="203" font-size="16" fill="#56676D">writes</text>
+    </g>
+    <text x="152" y="130" font-size="16" fill="#56676D">watches</text>
+    <g stroke="#56676D" stroke-width="1.8" marker-end="url(#arr-d3-26)">
+      <line x1="140" y1="82" x2="140" y2="165"/><line x1="560" y1="82" x2="560" y2="145"/><line x1="282" y1="215" x2="375" y2="215"/>
+      <line x1="742" y1="200" x2="835" y2="145"/><line x1="742" y1="240" x2="835" y2="250"/>
+    </g>
+  </svg>
+  <p>Nothing listens on the ClusterIP. The kernel sends each connection to one ready Pod (Kubernetes Authors, 2026).</p>
+  <aside class="notes">kube-proxy is the reason a ClusterIP works even though no network interface owns that address. It runs on every node, watches Services and EndpointSlices, and turns them into packet-processing rules in the kernel. In the default iptables mode, a rule matches the ClusterIP and port, picks one ready endpoint at random, and rewrites the destination address. The nftables mode does the same with the newer nftables framework. The older IPVS mode has been deprecated since Kubernetes 1.35. The choice happens once per connection, so a client that keeps a connection open keeps talking to the same Pod, which matters for HTTP keep-alive. Every node has the same rules, so a client can reach a Pod on another node over the Pod network. Ask the class why ping 10.43.12.7 fails even when the Service works. The rules only cover TCP and UDP traffic to the Service's ports, so nothing answers ICMP. Source: Kubernetes Authors (2026), Virtual IPs and Service Proxies.</aside>
+</section>
+
+<section>
+  <h2>Internal and external access, and how EKS provides it</h2>
+  <svg class="diagram" viewBox="0 0 1128 358" role="img" aria-label="Three paths: inside the cluster a Pod uses a ClusterIP Service; from the lab VM the browser goes through the k3d load balancer; on EKS users go through an NLB or ALB to Pod IP targets">
+    <defs><marker id="arr-d3-27" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#56676D"/></marker></defs>
+    <g font-size="18" font-weight="600" fill="#17262B">
+      <text x="0" y="22">Inside the cluster</text><text x="388" y="22">From your VM, with k3d</text><text x="776" y="22">On Amazon EKS</text>
+    </g>
+    <g fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5">
+      <rect x="0" y="40" width="352" height="78" rx="4"/><rect x="0" y="158" width="352" height="78" rx="4"/><rect x="0" y="276" width="352" height="78" rx="4"/>
+      <rect x="388" y="40" width="352" height="78" rx="4"/><rect x="388" y="158" width="352" height="78" rx="4"/><rect x="388" y="276" width="352" height="78" rx="4"/>
+      <rect x="776" y="40" width="352" height="78" rx="4"/>
+      <rect x="776" y="158" width="352" height="78" rx="4" fill="#FFFFFF" stroke="#0B7A75" stroke-width="2.5"/>
+      <rect x="776" y="276" width="352" height="78" rx="4"/>
+    </g>
+    <g text-anchor="middle" fill="#17262B">
+      <text x="176" y="74" font-size="20" font-weight="600">board Pod</text>
+      <text x="176" y="100" font-size="16" fill="#56676D">uses the name bag-api</text>
+      <text x="176" y="192" font-size="20" font-weight="600">ClusterIP Service</text>
+      <text x="176" y="218" font-size="16" fill="#56676D">bag-api</text>
+      <text x="176" y="310" font-size="20" font-weight="600">bag-api Pods</text>
+      <text x="176" y="336" font-size="16" fill="#56676D">on any node</text>
+      <text x="564" y="74" font-size="20" font-weight="600">Browser on the VM</text>
+      <text x="564" y="100" font-size="16" fill="#56676D">opens a mapped port on localhost</text>
+      <text x="564" y="192" font-size="20" font-weight="600">k3d load balancer</text>
+      <text x="564" y="218" font-size="16" fill="#56676D">forwards to the nodes</text>
+      <text x="564" y="310" font-size="20" font-weight="600">board Pods</text>
+      <text x="564" y="336" font-size="16" fill="#56676D">through NodePort or ServiceLB</text>
+      <text x="952" y="74" font-size="20" font-weight="600">Users</text>
+      <text x="952" y="100" font-size="16" fill="#56676D">on the internet or a private network</text>
+      <text x="952" y="192" font-size="20" font-weight="600">NLB or ALB</text>
+      <text x="952" y="218" font-size="16" fill="#56676D">from the AWS Load Balancer Controller</text>
+      <text x="952" y="310" font-size="20" font-weight="600">Pods as IP targets</text>
+      <text x="952" y="336" font-size="16" fill="#56676D">routable through the VPC CNI</text>
+    </g>
+    <g stroke="#56676D" stroke-width="1.8" marker-end="url(#arr-d3-27)">
+      <line x1="176" y1="120" x2="176" y2="153"/><line x1="176" y1="238" x2="176" y2="271"/>
+      <line x1="564" y1="120" x2="564" y2="153"/><line x1="564" y1="238" x2="564" y2="271"/>
+      <line x1="952" y1="120" x2="952" y2="153"/><line x1="952" y1="238" x2="952" y2="271"/>
+    </g>
+  </svg>
+  <p>On EKS, the AWS Load Balancer Controller creates a Network Load Balancer for a LoadBalancer Service and an Application Load Balancer for an Ingress (Amazon Web Services, 2026).</p>
+  <aside class="notes">Most Services handle traffic inside the cluster only, like bag-api for the board and the scanner. In your lab, the browser on the VM opens localhost:8081 for the board's LoadBalancer Service, or localhost:30080 for its NodePort. The k3d load balancer container forwards both ports to the nodes, where ServiceLB or the NodePort passes the traffic to the board Pods. On EKS, you install the AWS Load Balancer Controller. It watches Services of type LoadBalancer and creates a Network Load Balancer, and it watches Ingress objects and creates an Application Load Balancer for HTTP routing. With IP targets, the load balancer sends traffic to Pod IP addresses, which the VPC CNI makes routable; Fargate Pods support only IP targets. Without the controller, EKS falls back to a legacy cloud provider that creates Classic Load Balancers. Ingress and the newer Gateway API are outside this course. Ask the class which BagTrack Services need any external access at all. Source: Amazon Web Services (2026), Amazon EKS User Guide.</aside>
+</section>
+
+<section>
+  <h2>Deployments, ReplicaSets and Pods</h2>
+  <svg class="diagram" viewBox="0 0 1128 312" role="img" aria-label="A Deployment manages a new ReplicaSet with three Pods on image 1.0.3 and an old ReplicaSet with zero Pods on 1.0, kept for rollback">
+    <defs><marker id="arr-d3-28" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#56676D"/></marker></defs>
+    <g fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5">
+      <rect x="0" y="90" width="300" height="130" rx="4" fill="#FFFFFF" stroke="#0B7A75" stroke-width="2.5"/>
+      <rect x="390" y="20" width="340" height="110" rx="4"/><rect x="390" y="196" width="340" height="110" rx="4"/>
+      <rect x="820" y="0" width="308" height="50" rx="4"/><rect x="820" y="62" width="308" height="50" rx="4"/><rect x="820" y="124" width="308" height="50" rx="4"/>
+    </g>
+    <g text-anchor="middle" fill="#17262B">
+      <text x="150" y="132" font-size="20" font-weight="600">Deployment bag-api</text>
+      <text x="150" y="166" font-size="17" font-family="Plex Mono, Menlo, monospace">replicas: 3</text>
+      <text x="150" y="196" font-size="17" font-family="Plex Mono, Menlo, monospace">image: bag-api:1.0.3</text>
+      <text x="560" y="64" font-size="20" font-weight="600">ReplicaSet bag-api-6b7c</text>
+      <text x="560" y="96" font-size="16" fill="#56676D">image 1.0.3, 3 Pods</text>
+      <text x="560" y="240" font-size="20" font-weight="600">ReplicaSet bag-api-5d8f</text>
+      <text x="560" y="272" font-size="16" fill="#56676D">image 1.0, 0 Pods, kept for rollback</text>
+      <g font-size="18"><text x="974" y="31">Pod with image 1.0.3</text><text x="974" y="93">Pod with image 1.0.3</text><text x="974" y="155">Pod with image 1.0.3</text></g>
+    </g>
+    <g stroke="#56676D" stroke-width="1.8" marker-end="url(#arr-d3-28)">
+      <line x1="302" y1="130" x2="385" y2="85"/><line x1="302" y1="180" x2="385" y2="245"/>
+      <line x1="732" y1="60" x2="815" y2="27"/><line x1="732" y1="75" x2="815" y2="87"/><line x1="732" y1="90" x2="815" y2="147"/>
+    </g>
+  </svg>
+  <p>You change the Deployment. It creates one ReplicaSet for each version of the Pod template, and each ReplicaSet keeps its number of Pods running (Kubernetes Authors, 2026).</p>
+  <aside class="notes">A Deployment does not create Pods itself. It manages ReplicaSets, and each ReplicaSet keeps a set number of identical Pods running from one Pod template. When you change the template, for example the image tag, the Deployment creates a new ReplicaSet and moves Pods from the old one to the new one. The old ReplicaSet stays with zero Pods, so a rollback only has to scale it back up. The suffix in the names is a hash of the template, and every Pod has it as the pod-template-hash label. By default a Deployment keeps ten old ReplicaSets. You rarely create ReplicaSets yourself. The ECS equivalent is an ECS service and its deployments. The service keeps the desired count, and each deployment tracks the tasks of one task definition revision. Ask the class what happens if you delete the ReplicaSet that the Deployment uses now. The Deployment creates it again. Source: Kubernetes Authors (2026), Deployments.</aside>
+</section>
+
+<section>
+  <h2>Scaling a Deployment</h2>
+<pre><code># Run five copies of bag-api instead of three
+kubectl -n bagtrack scale deployment/bag-api --replicas=5
+
+# See which node each Pod runs on
+kubectl -n bagtrack get pods -l app=bag-api -o wide
+
+# Delete one Pod and watch its replacement start
+kubectl -n bagtrack delete pod &lt;name-of-a-bag-api-pod&gt;
+kubectl -n bagtrack get pods -l app=bag-api --watch</code></pre>
+  <p>Scaling changes one number in the spec, and the ReplicaSet controller creates or deletes Pods to match. A HorizontalPodAutoscaler changes it from measured CPU or memory use (Kubernetes Authors, 2026).</p>
+  <aside class="notes">Scaling a Deployment is a change to one field. kubectl scale writes spec.replicas, the ReplicaSet controller creates the extra Pods, the scheduler spreads them over the nodes, and the EndpointSlice controller adds them to the Service when they become ready. Deleting a Pod shows the same loop. The count drops below the spec, and a new Pod appears. Lab 08 also shows the limit of scaling. bag-api still keeps its bags in memory there, so each replica has its own data, and each refresh of the board can show a different hostname and different bags. Scaling works cleanly only when Pods keep no state, which is why Lab 09 moves the data into Postgres. A HorizontalPodAutoscaler changes replicas for you from metrics, and k3s includes the metrics-server it needs. On ECS the matching feature is Service Auto Scaling. Ask the class what happens at the next kubectl apply if the manifest in Git says 3 replicas and someone scaled to 5 by hand. Sources: Kubernetes Authors (2026), Deployments and Horizontal Pod Autoscaling; K3s Project Authors (2026).</aside>
+</section>
+
+<section>
+  <h2>Rolling update parameters</h2>
+  <svg class="diagram" viewBox="0 0 1128 316" role="img" aria-label="A rolling update with three replicas, maxSurge 1 and maxUnavailable 0: a 1.0.3 Pod starts, becomes ready, a 1.0 Pod stops, and this repeats until all three Pods run 1.0.3">
+    <text x="0" y="18" font-size="17" fill="#56676D">Example from image 1.0 to 1.0.3, with replicas 3, maxSurge 1 and maxUnavailable 0</text>
+    <g font-size="18" fill="#17262B">
+      <text x="0" y="72">Start</text><text x="0" y="144">A 1.0.3 Pod starts</text>
+      <text x="0" y="216">It is ready, a 1.0 Pod stops</text><text x="0" y="288">Repeated until all run 1.0.3</text>
+    </g>
+    <g fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5">
+      <rect x="360" y="36" width="170" height="58" rx="4"/><rect x="544" y="36" width="170" height="58" rx="4"/><rect x="728" y="36" width="170" height="58" rx="4"/>
+      <rect x="360" y="108" width="170" height="58" rx="4"/><rect x="544" y="108" width="170" height="58" rx="4"/><rect x="728" y="108" width="170" height="58" rx="4"/>
+      <rect x="912" y="108" width="170" height="58" rx="4" fill="#FFFFFF" stroke="#0B7A75" stroke-width="2.5"/>
+      <rect x="360" y="180" width="170" height="58" rx="4"/><rect x="544" y="180" width="170" height="58" rx="4"/><rect x="728" y="180" width="170" height="58" rx="4"/>
+      <rect x="360" y="252" width="170" height="58" rx="4"/><rect x="544" y="252" width="170" height="58" rx="4"/><rect x="728" y="252" width="170" height="58" rx="4"/>
+    </g>
+    <g text-anchor="middle" font-size="18" font-weight="600" fill="#17262B">
+      <text x="445" y="71">1.0</text><text x="629" y="71">1.0</text><text x="813" y="71">1.0</text>
+      <text x="445" y="143">1.0</text><text x="629" y="143">1.0</text><text x="813" y="143">1.0</text>
+      <text x="997" y="143" font-weight="400" font-size="16">1.0.3, starting</text>
+      <text x="445" y="215">1.0</text><text x="629" y="215">1.0</text><text x="813" y="215">1.0.3</text>
+      <text x="445" y="287">1.0.3</text><text x="629" y="287">1.0.3</text><text x="813" y="287">1.0.3</text>
+    </g>
+  </svg>
+  <p>maxSurge sets how many extra Pods may exist during the update, and maxUnavailable sets how many may be missing. Both default to 25% of the replicas (Kubernetes Authors, 2026).</p>
+  <aside class="notes">A rolling update replaces Pods a few at a time. maxSurge is how many Pods above the desired count may exist, and maxUnavailable is how many below it may be missing. Lab 08 runs three bag-api replicas with maxSurge 1 and maxUnavailable 0. The Deployment starts one new Pod, waits until its readiness probe passes, removes one old Pod, and repeats. This setting never drops below full capacity, at the cost of one extra Pod during the update. Both values default to 25%. Kubernetes rounds maxSurge up and maxUnavailable down, so for three replicas the defaults also come to 1 and 0. Without a readiness probe, a Pod counts as ready as soon as its container starts, and traffic can reach it before the app can answer. The other strategy, Recreate, stops all old Pods first, which suits apps that cannot run two versions at once. Ask the class what maxSurge 0 with maxUnavailable 0 would do. The API rejects it, because no Pod could ever be replaced. Source: Kubernetes Authors (2026), Deployments.</aside>
+</section>
+
+<section>
+  <h2>Rollout history and rollback</h2>
+<pre><code>kubectl -n bagtrack set image deployment/bag-api bag-api=localhost:5000/bag-api:1.0.3
+kubectl -n bagtrack rollout status deployment/bag-api
+
+kubectl -n bagtrack rollout history deployment/bag-api
+kubectl -n bagtrack rollout undo deployment/bag-api
+kubectl -n bagtrack rollout undo deployment/bag-api --to-revision=1</code></pre>
+  <p>A rollout that stops making progress is reported as ProgressDeadlineExceeded, after 600 seconds by default. Kubernetes takes no other action, so you or your deployment tool start the rollback (Kubernetes Authors, 2026).</p>
+  <aside class="notes">Each change to the Pod template creates a new revision, and kubectl rollout history lists them. In a team you would change the manifest in Git and apply it instead of using kubectl set image, so that the change is reviewed. In Lab 08 you roll out the image that your Day 2 pipeline tagged with its build number, such as 1.0.3. Then you set the tag 9.9, which does not exist. The new Pod goes to ImagePullBackOff and never becomes ready, and because maxUnavailable is 0 the old Pods keep serving. After its deadline, the Deployment reports ProgressDeadlineExceeded and Kubernetes stops there. kubectl rollout undo scales the previous ReplicaSet back up. Headlamp has no screen for rollout history or undo, so this part stays in the terminal. The Harness platform, which United uses, has rollback for Kubernetes and ECS deployments, and ECS has a deployment circuit breaker that can roll back on its own. Ask the class what should trigger a rollback in their own services. Sources: Kubernetes Authors (2026), Deployments; Harness (2026); Amazon Web Services (2026).</aside>
+</section>
+
+<section>
+  <h2>Lab 08: Deployments and Services</h2>
+  <div class="lab-path">labs/08-deployments-services.md</div>
+  <ul class="lab-steps">
+    <li>Deploy bag-api with three replicas, plus the board and the scanner</li>
+    <li>Reach bag-api through a ClusterIP Service and its DNS name from a debug Pod</li>
+    <li>Open the board in the browser through a LoadBalancer Service and a NodePort</li>
+    <li>Refresh the board to see each replica's own bags, and delete Pods to see self-healing</li>
+    <li>Roll out the pipeline's tag, such as <code>1.0.3</code>, break a rollout with <code>9.9</code>, and undo it</li>
+  </ul>
+  <aside class="notes">Send the class to Lab 08. They deploy the three BagTrack services as Deployments, give bag-api a ClusterIP Service, and look up its DNS names from a debug Pod. They open the board at localhost:8081 through a LoadBalancer Service and on port 30080 through a NodePort. With three bag-api replicas, each refresh of the board can show a different hostname and different bags, because each replica keeps its own data in memory until Lab 09. Ask them to explain that before they move on. Deleting Pods shows self-healing. Last, they roll out the pipeline's image, such as 1.0.3, with maxSurge 1 and maxUnavailable 0, break a rollout with the tag 9.9, and roll it back with kubectl rollout undo. If the board cannot reach bag-api, check the EndpointSlices first; an empty list means the selector and the Pod labels do not match. Source: labs/08-deployments-services.md in the course repository.</aside>
+</section>
+
+<section>
+  <h2>Volumes in a Pod</h2>
+  <table>
+    <tr><th>Volume type</th><th>Where the data is</th><th>How long it lasts</th><th>Typical use</th></tr>
+    <tr><td><code>emptyDir</code></td><td>The node's disk, or memory</td><td>As long as the Pod</td><td>Scratch files, and files shared between containers</td></tr>
+    <tr><td><code>configMap</code>, <code>secret</code></td><td>Objects in the API</td><td>As long as the object</td><td>Configuration files</td></tr>
+    <tr><td><code>hostPath</code></td><td>A path on the node</td><td>As long as the node</td><td>Node agents only</td></tr>
+    <tr><td><code>persistentVolumeClaim</code></td><td>Storage outside the Pod</td><td>Independent of any Pod</td><td>Databases</td></tr>
+  </table>
+  <p>hostPath exposes the node's filesystem to the Pod. The Baseline Pod Security Standard forbids it (Kubernetes Authors, 2026).</p>
+  <aside class="notes">A volume is a directory that the containers of a Pod can mount. The Pod spec lists the volumes, and each container chooses where to mount them. emptyDir starts empty when the Pod is scheduled and is deleted with the Pod. It survives container restarts, which makes it the right place for files shared between containers, as the writer and reader containers do in Lab 09. hostPath mounts a path from the node itself. That is risky, because the Pod can read or change node files, and its data depends on which node it runs on. Node agents in DaemonSets are the usual exception. For data that must outlive the Pod, the Pod refers to a PersistentVolumeClaim, which is the next slide. Compared with Day 1, hostPath is the Kubernetes form of a bind mount, and a PersistentVolumeClaim plays the role of a named volume. Ask the class what happens to an emptyDir when the container restarts, and when the Pod is deleted. Source: Kubernetes Authors (2026), Volumes and Pod Security Standards.</aside>
+</section>
+
+<section>
+  <h2>PersistentVolumes and PersistentVolumeClaims</h2>
+  <svg class="diagram" viewBox="0 0 1128 240" role="img" aria-label="A Pod mounts a PersistentVolumeClaim, which is bound to a PersistentVolume backed by real storage; the app team writes the first two, the cluster provides the last two">
+    <defs><marker id="arr-d3-34" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#56676D"/></marker></defs>
+    <g fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5">
+      <rect x="0" y="20" width="252" height="140" rx="4"/><rect x="292" y="20" width="252" height="140" rx="4"/>
+      <rect x="584" y="20" width="252" height="140" rx="4" fill="#FFFFFF" stroke="#0B7A75" stroke-width="2.5"/>
+      <rect x="876" y="20" width="252" height="140" rx="4"/>
+    </g>
+    <g text-anchor="middle" fill="#17262B">
+      <text x="126" y="66" font-size="20" font-weight="600">Pod bagtrack-db-0</text>
+      <text x="126" y="98" font-size="16" fill="#56676D">mounts the claim</text>
+      <text x="126" y="122" font-size="16" fill="#56676D">by name</text>
+      <text x="418" y="66" font-size="19" font-weight="600">PersistentVolumeClaim</text>
+      <text x="418" y="98" font-size="15" font-family="Plex Mono, Menlo, monospace" fill="#56676D">data-bagtrack-db-0</text>
+      <text x="418" y="122" font-size="16" fill="#56676D">1Gi, ReadWriteOnce</text>
+      <text x="710" y="66" font-size="20" font-weight="600">PersistentVolume</text>
+      <text x="710" y="98" font-size="16" fill="#56676D">a real volume of</text>
+      <text x="710" y="122" font-size="16" fill="#56676D">at least 1Gi</text>
+      <text x="1002" y="66" font-size="20" font-weight="600">Storage</text>
+      <text x="1002" y="98" font-size="16" fill="#56676D">a node directory in k3s,</text>
+      <text x="1002" y="122" font-size="16" fill="#56676D">an EBS volume on EKS</text>
+      <text x="272" y="226" font-size="17" fill="#56676D">Written by the app team</text>
+      <text x="856" y="226" font-size="17" fill="#56676D">Provided by the cluster</text>
+    </g>
+    <g stroke="#B9C8CA" stroke-width="1.5"><line x1="0" y1="196" x2="544" y2="196"/><line x1="584" y1="196" x2="1128" y2="196"/></g>
+    <g stroke="#56676D" stroke-width="1.8" marker-end="url(#arr-d3-34)">
+      <line x1="254" y1="90" x2="287" y2="90"/><line x1="546" y1="90" x2="579" y2="90"/><line x1="838" y1="90" x2="871" y2="90"/>
+    </g>
+  </svg>
+  <p>Kubernetes binds each claim to a matching volume. The volume and its data outlive the Pods that use it (Kubernetes Authors, 2026).</p>
+  <aside class="notes">Persistent storage in Kubernetes separates two jobs. The app team writes a PersistentVolumeClaim, which says how much storage it needs and how it will be mounted. The cluster provides PersistentVolumes, which represent real storage such as a directory on a node, an NFS share or an Amazon EBS volume. Kubernetes binds each claim to one volume, and the Pod mounts the claim by name. This split means that a manifest asks for storage the same way on k3d and on EKS, while the storage behind it differs. A PersistentVolume has its own lifecycle. Deleting the Pod leaves the claim and the data in place, and a new Pod that mounts the same claim sees the same files. In Lab 09 you delete the Postgres Pod and check that the data you created is still there. Ask the class who should be allowed to create PersistentVolumes by hand in a shared cluster. Source: Kubernetes Authors (2026), Persistent Volumes.</aside>
+</section>
+
+<section>
+  <h2>StorageClasses and dynamic provisioning</h2>
+  <table>
+    <tr><th></th><th>k3s on your VM</th><th>Amazon EKS</th></tr>
+    <tr><td>StorageClass</td><td><code>local-path</code>, the default</td><td>One that you define, such as <code>gp3</code></td></tr>
+    <tr><td>Provisioner</td><td>Local Path Provisioner</td><td>Amazon EBS CSI driver</td></tr>
+    <tr><td>Where the data is</td><td>A directory under <code>/var/lib/rancher/k3s/storage</code> on one node</td><td>An EBS volume in one Availability Zone</td></tr>
+    <tr><td>Effect on scheduling</td><td>The Pod stays on that node</td><td>The Pod stays in that zone</td></tr>
+  </table>
+  <p>A claim names a StorageClass. The class's provisioner creates a matching PersistentVolume on demand (K3s Project Authors, 2026; Amazon Web Services, 2026).</p>
+  <aside class="notes">Creating PersistentVolumes by hand does not scale, so most clusters use dynamic provisioning. A StorageClass names a provisioner and its parameters, and a claim that names the class gets a new volume made for it. k3s ships the Local Path Provisioner with a default class called local-path. It creates a directory under /var/lib/rancher/k3s/storage on the node where the Pod runs, which in k3d is inside that node's container, and the Pod is then bound to that node. On EKS you install the Amazon EBS CSI driver as an add-on and define a class such as gp3, and each claim gets a new EBS volume. A gp3 volume belongs to one Availability Zone and attaches to one instance at a time, so the Pod must run in that zone. For storage that many Pods share, EKS uses Amazon EFS through its own CSI driver. Pods on EKS Fargate cannot mount EBS volumes. Ask the class what happens to a local-path volume if its k3d node container is deleted. Sources: K3s Project Authors (2026); Amazon Web Services (2026).</aside>
+</section>
+
+<section>
+  <h2>Access modes and reclaim policy</h2>
+  <table>
+    <tr><th>Setting</th><th>Value</th><th>Meaning</th></tr>
+    <tr><td rowspan="4">Access mode</td><td><code>ReadWriteOnce</code></td><td>Read-write from one node at a time</td></tr>
+    <tr><td><code>ReadWriteOncePod</code></td><td>Read-write from one Pod</td></tr>
+    <tr><td><code>ReadOnlyMany</code></td><td>Read-only from many nodes</td></tr>
+    <tr><td><code>ReadWriteMany</code></td><td>Read-write from many nodes, for example Amazon EFS</td></tr>
+    <tr><td rowspan="2">Reclaim policy</td><td><code>Delete</code></td><td>Deleting the claim deletes the volume and its data</td></tr>
+    <tr><td><code>Retain</code></td><td>The volume and its data stay until an administrator removes them</td></tr>
+  </table>
+  <p>Dynamically provisioned volumes take the reclaim policy of their StorageClass, which is Delete by default (Kubernetes Authors, 2026).</p>
+  <aside class="notes">Access modes describe how a volume can be mounted, and the storage must support the mode you ask for. ReadWriteOnce means one node can mount it read-write. Several Pods on that node can still share it, which surprises people. ReadWriteOncePod limits it to one Pod, which is a safe choice for a database. EBS and local-path volumes support ReadWriteOnce, and Amazon EFS supports ReadWriteMany. The lab claims use local-path with ReadWriteOnce and the Delete policy. The reclaim policy decides what happens to the volume when its claim is deleted. Delete removes the volume and its data, and it is the default for dynamically provisioned volumes. Retain keeps them for an administrator to recover or clean up, which is what you want for production databases. Deleting a StatefulSet does not delete its claims either, which protects data from a mistaken delete. Ask the class which reclaim policy they would want for the Postgres volume in production, and what extra work it creates. Source: Kubernetes Authors (2026), Persistent Volumes.</aside>
+</section>
+
+<section>
+  <h2>StatefulSets</h2>
+  <svg class="diagram" viewBox="0 0 1128 380" role="img" aria-label="A StatefulSet named bagtrack-db creates Pods bagtrack-db-0, bagtrack-db-1 and bagtrack-db-2 in order; each Pod has a stable DNS name through the headless Service and its own claim, such as data-bagtrack-db-0">
+    <defs><marker id="arr-d3-37" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#56676D"/></marker></defs>
+    <g fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5">
+      <rect x="0" y="0" width="360" height="86" rx="4"/>
+      <rect x="768" y="0" width="360" height="86" rx="4" fill="#FFFFFF" stroke="#0B7A75" stroke-width="2.5"/>
+      <rect x="0" y="150" width="352" height="100" rx="4"/><rect x="388" y="150" width="352" height="100" rx="4"/><rect x="776" y="150" width="352" height="100" rx="4"/>
+      <rect x="0" y="296" width="352" height="80" rx="4"/><rect x="388" y="296" width="352" height="80" rx="4"/><rect x="776" y="296" width="352" height="80" rx="4"/>
+    </g>
+    <g text-anchor="middle" fill="#17262B">
+      <text x="180" y="36" font-size="20" font-weight="600">Headless Service bagtrack-db</text>
+      <text x="180" y="66" font-size="16" font-family="Plex Mono, Menlo, monospace" fill="#56676D">clusterIP: None</text>
+      <text x="948" y="36" font-size="20" font-weight="600">StatefulSet bagtrack-db</text>
+      <text x="948" y="66" font-size="16" font-family="Plex Mono, Menlo, monospace" fill="#56676D">replicas: 3</text>
+      <text x="564" y="36" font-size="16" fill="#56676D">Three replicas as an example.</text>
+      <text x="564" y="60" font-size="16" fill="#56676D">Lab 09 runs one.</text>
+      <text x="176" y="188" font-size="20" font-weight="600">bagtrack-db-0</text>
+      <text x="564" y="188" font-size="20" font-weight="600">bagtrack-db-1</text>
+      <text x="952" y="188" font-size="20" font-weight="600">bagtrack-db-2</text>
+      <g font-size="15" font-family="Plex Mono, Menlo, monospace" fill="#56676D">
+        <text x="176" y="222">bagtrack-db-0.bagtrack-db</text>
+        <text x="564" y="222">bagtrack-db-1.bagtrack-db</text>
+        <text x="952" y="222">bagtrack-db-2.bagtrack-db</text>
+      </g>
+      <g font-size="17" font-weight="600" font-family="Plex Mono, Menlo, monospace">
+        <text x="176" y="330">data-bagtrack-db-0</text><text x="564" y="330">data-bagtrack-db-1</text><text x="952" y="330">data-bagtrack-db-2</text>
+      </g>
+      <g font-size="16" fill="#56676D">
+        <text x="176" y="358">1Gi from local-path</text><text x="564" y="358">1Gi from local-path</text><text x="952" y="358">1Gi from local-path</text>
+      </g>
+    </g>
+    <g stroke="#56676D" stroke-width="1.8" marker-end="url(#arr-d3-37)">
+      <line x1="354" y1="200" x2="383" y2="200"/><line x1="742" y1="200" x2="771" y2="200"/>
+      <line x1="176" y1="252" x2="176" y2="291"/><line x1="564" y1="252" x2="564" y2="291"/><line x1="952" y1="252" x2="952" y2="291"/>
+      <line x1="900" y1="88" x2="200" y2="146"/><line x1="930" y1="88" x2="580" y2="146"/><line x1="952" y1="88" x2="952" y2="145"/>
+    </g>
+  </svg>
+  <p>Each Pod keeps its name, DNS name and claim when it is replaced. Pods start one at a time in order and stop in reverse order (Kubernetes Authors, 2026).</p>
+  <aside class="notes">A Deployment treats its Pods as interchangeable. They have random names and one shared template, and any Pod can replace any other. Databases need the opposite. A StatefulSet gives each Pod a fixed ordinal name, such as bagtrack-db-0, and recreates a deleted Pod with the same name. Through the headless Service named in serviceName, each Pod also gets a stable DNS name, so clients can reach a specific member. volumeClaimTemplates give each Pod its own claim, such as data-bagtrack-db-0, and a replacement Pod gets the same claim back. In Lab 09 you delete bagtrack-db-0 and find your data still there when the Pod returns. By default Pods start one at a time in order, each waiting for the previous one to be ready, and scale down in reverse order. A StatefulSet does not make Postgres replicate; that is the job of the database or an operator, which is why Lab 09 runs one replica. Ask the class what a StatefulSet adds for a single database Pod compared with a Deployment and a claim. Source: Kubernetes Authors (2026), StatefulSets.</aside>
+</section>
+
+<section>
+  <h2>How a Job runs Pods to completion</h2>
+  <table>
+    <tr><th>Field</th><th>Meaning</th><th>Default</th></tr>
+    <tr><td><code>completions</code></td><td>How many Pods must succeed</td><td>1</td></tr>
+    <tr><td><code>parallelism</code></td><td>How many Pods may run at once</td><td>1</td></tr>
+    <tr><td><code>backoffLimit</code></td><td>Failures allowed before the Job fails</td><td>6</td></tr>
+    <tr><td><code>activeDeadlineSeconds</code></td><td>Time limit for the whole Job</td><td>None</td></tr>
+    <tr><td><code>ttlSecondsAfterFinished</code></td><td>Deletes the finished Job after this many seconds</td><td>None</td></tr>
+  </table>
+  <p>A Job's Pods use restartPolicy OnFailure or Never. The Job succeeds when enough Pods exit with code 0 (Kubernetes Authors, 2026).</p>
+  <aside class="notes">Deployments are for processes that should run forever. A Job is for work that ends, such as a database migration, a report, or loading seed data. In Lab 09 the seed Job runs python -m bagtrack.seed once. The Job controller creates Pods until the number of successful completions is reached. If a Pod fails, the Job creates another, up to backoffLimit. The Pod template must use OnFailure, which restarts the container in the same Pod, or Never, which makes a new Pod for each retry and keeps the failed Pods for their logs. Finished Jobs and their Pods stay until you delete them, unless ttlSecondsAfterFinished cleans them up. That matters on EKS Fargate, where AWS notes that finished Pods still cost money. The exit codes from Day 1 matter here, because only 0 counts as success. ECS has no Job object; you run a standalone task, or schedule one with Amazon EventBridge. Ask the class which field stops a stuck Job from running forever. Sources: Kubernetes Authors (2026), Jobs; Amazon Web Services (2026).</aside>
+</section>
+
+<section>
+  <h2>CronJobs</h2>
+<pre><code>apiVersion: batch/v1
+kind: CronJob
+metadata: {name: bag-report, namespace: bagtrack}
+spec:
+  schedule: "* * * * *"
+  concurrencyPolicy: Forbid    # optional, not set in the lab
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: report
+            image: localhost:5000/scanner:1.0
+            args: ["report"]</code></pre>
+  <p>The CronJob controller creates a Job at each scheduled time. concurrencyPolicy decides what happens when the previous Job is still running (Kubernetes Authors, 2026).</p>
+  <aside class="notes">A CronJob creates a Job on a schedule written in the standard cron format: minute, hour, day of month, month and day of week. This one runs every minute, as in Lab 09, and it starts the scanner in its report mode. concurrencyPolicy is Allow by default, which lets runs overlap. Forbid skips a run while the last one is still going, and Replace stops the old run and starts the new one. A report should not overlap with itself, so Forbid fits. The controller keeps the last three successful Jobs and the last failed one. Schedules use the time zone of the controller manager unless you set the timeZone field. If the cluster was down at a scheduled time, startingDeadlineSeconds limits how late a missed run may still start. The documentation asks for Jobs that are safe to run twice, because in rare cases a schedule creates two Jobs or none. Ask the class what would go wrong if the report job were not safe to run twice. Source: Kubernetes Authors (2026), CronJob.</aside>
+</section>
+
+<section>
+  <h2>DaemonSets</h2>
+  <svg class="diagram" viewBox="0 0 1128 360" role="img" aria-label="A DaemonSet named node-agent runs one Pod on each of the three nodes, next to the application Pods">
+    <defs><marker id="arr-d3-40" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#56676D"/></marker></defs>
+    <g fill="#FFFFFF" stroke="#B9C8CA" stroke-width="1.5">
+      <rect x="0" y="140" width="352" height="216" rx="4"/><rect x="388" y="140" width="352" height="216" rx="4"/><rect x="776" y="140" width="352" height="216" rx="4"/>
+    </g>
+    <g fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5">
+      <rect x="404" y="0" width="320" height="86" rx="4" fill="#FFFFFF" stroke="#0B7A75" stroke-width="2.5"/>
+      <rect x="36" y="190" width="280" height="60" rx="4"/><rect x="424" y="190" width="280" height="60" rx="4"/><rect x="812" y="190" width="280" height="60" rx="4"/>
+      <rect x="36" y="272" width="280" height="60" rx="4"/><rect x="424" y="272" width="280" height="60" rx="4"/><rect x="812" y="272" width="280" height="60" rx="4"/>
+    </g>
+    <g text-anchor="middle" fill="#17262B">
+      <text x="564" y="36" font-size="20" font-weight="600">DaemonSet node-agent</text>
+      <text x="564" y="66" font-size="16" fill="#56676D">one Pod on every node</text>
+      <g font-size="18" font-weight="600"><text x="176" y="172">k3d-hub-server-0</text><text x="564" y="172">k3d-hub-agent-0</text><text x="952" y="172">k3d-hub-agent-1</text></g>
+      <g font-size="18"><text x="176" y="226">node-agent Pod</text><text x="564" y="226">node-agent Pod</text><text x="952" y="226">node-agent Pod</text></g>
+      <g font-size="16" fill="#56676D"><text x="176" y="307">application Pods</text><text x="564" y="307">application Pods</text><text x="952" y="307">application Pods</text></g>
+    </g>
+    <g stroke="#56676D" stroke-width="1.8" marker-end="url(#arr-d3-40)">
+      <line x1="500" y1="88" x2="200" y2="135"/><line x1="564" y1="88" x2="564" y2="135"/><line x1="628" y1="88" x2="928" y2="135"/>
+    </g>
+  </svg>
+  <p>DaemonSets run node-level agents such as log collectors and network plugins. A node that joins the cluster gets the Pod automatically (Kubernetes Authors, 2026).</p>
+  <aside class="notes">A DaemonSet runs one copy of a Pod on every node, or on every node that matches a selector. You use it for software that belongs to the node rather than to one application: log collectors that read container logs from the node's disk, metrics agents, storage drivers and network plugins. When a node joins, the DaemonSet controller adds a Pod there, and when a node leaves, its Pod goes with it. In your k3d cluster, ServiceLB is built on DaemonSets. On EKS, the VPC CNI's aws-node agent and kube-proxy run as DaemonSets. EKS Fargate does not support DaemonSets, because each Fargate Pod runs on its own isolated node; AWS suggests running the agent as a sidecar in each Pod instead. In Lab 09 you deploy a small node agent and see one Pod per node with kubectl get pods -o wide. Ask the class how many node-agent Pods there will be after a fourth node joins. Sources: Kubernetes Authors (2026), DaemonSet; Amazon Web Services (2026).</aside>
+</section>
+
+<section>
+  <h2>Lab 09: Storage, StatefulSets and batch work</h2>
+  <div class="lab-path">labs/09-state-and-batch.md</div>
+  <ul class="lab-steps">
+    <li>Run Postgres as the StatefulSet <code>bagtrack-db</code> with a headless Service and a 1Gi local-path claim</li>
+    <li>Delete <code>bagtrack-db-0</code> and check that the data survives</li>
+    <li>Make bag-api wait for the database with an init container, and load data with a seed Job</li>
+    <li>Run <code>scanner report</code> as a CronJob every minute, and a node-agent DaemonSet</li>
+    <li>Share files between a writer and a reader container through an emptyDir</li>
+  </ul>
+  <aside class="notes">Send the class to Lab 09, the last lab of the course. They run Postgres as the StatefulSet bagtrack-db, with a headless Service of the same name and the claim data-bagtrack-db-0 from local-path. The Secret bagtrack-db holds the database password. They add data, delete bagtrack-db-0, and check that the data is still there after the StatefulSet recreates the Pod with the same claim. bag-api gets the init container wait-for-db, which waits for port 5432 with nc, and a seed Job runs python -m bagtrack.seed. A CronJob runs scanner report every minute, a DaemonSet shows one node-agent Pod on each node, and an emptyDir lets a writer container and a reader container share files. With Postgres in place, every bag-api replica shows the same bags, which closes the gap from Lab 08. If the Postgres Pod stays Pending, kubectl describe pvc usually explains why. Ask students whether they would run Postgres in the cluster or use Amazon RDS, and why. Source: labs/09-state-and-batch.md in the course repository.</aside>
+</section>
+
+<section>
+  <h2>Scaling approaches compared</h2>
+  <table>
+    <tr><th>Need</th><th>Docker and Compose</th><th>Amazon ECS</th><th>Kubernetes</th></tr>
+    <tr><td>Run more copies</td><td><code>--scale</code> or <code>deploy.replicas</code>, on one host</td><td>The service's desired count</td><td>The Deployment's replicas</td></tr>
+    <tr><td>Scale automatically</td><td>Not built in</td><td>Service Auto Scaling</td><td>HorizontalPodAutoscaler</td></tr>
+    <tr><td>Spread the load</td><td>DNS round robin on the network</td><td>An ALB target group</td><td>A Service and kube-proxy</td></tr>
+    <tr><td>Add capacity</td><td>A bigger host</td><td>Fargate, or more EC2 instances</td><td>More nodes, or Fargate on EKS</td></tr>
+  </table>
+  <p>Every platform scales a stateless service by adding copies behind one address. Stateful parts such as Postgres need a different plan (Amazon Web Services, 2026; Kubernetes Authors, 2026).</p>
+  <aside class="notes">This slide and the next one serve the course objective of evaluating approaches to scaling, resilience and microservice design. All three platforms scale a stateless service the same way. They run more copies and put one address in front of them. Docker and Compose do it on one host, so they cannot add capacity beyond that machine. ECS and Kubernetes both keep a desired count and can change it automatically, ECS through Service Auto Scaling and Kubernetes through the HorizontalPodAutoscaler. On Fargate, AWS supplies the capacity for new copies; clusters built on EC2 instances also need node scaling. BagTrack shows the design side. In Lab 08, with in-memory storage, each bag-api replica had its own bags. Once the data moved to Postgres in Lab 09, bag-api could scale out, and the board is static files. The twelve-factor rules on processes and disposability describe this design (Wiggins, 2011). Ask the class which BagTrack service they would scale first during a holiday travel peak, and on which metric. Sources: Amazon Web Services (2026); Kubernetes Authors (2026).</aside>
+</section>
+
+<section>
+  <h2>Resilience approaches compared</h2>
+  <table>
+    <tr><th>Need</th><th>Docker and Compose</th><th>Amazon ECS</th><th>Kubernetes</th></tr>
+    <tr><td>Restart a failed container</td><td>A restart policy</td><td>The service replaces the task</td><td>The kubelet restarts it, and the ReplicaSet replaces lost Pods</td></tr>
+    <tr><td>Detect an unhealthy app</td><td>HEALTHCHECK and <code>depends_on</code> conditions</td><td>Container and target group health checks</td><td>Liveness, readiness and startup probes</td></tr>
+    <tr><td>Survive a host or zone failure</td><td>Not possible on one host</td><td>Tasks spread across Availability Zones</td><td>New Pods on other nodes and zones</td></tr>
+    <tr><td>Undo a bad release</td><td>By hand</td><td>Deployment circuit breaker with rollback</td><td><code>kubectl rollout undo</code>, or a CD tool</td></tr>
+  </table>
+  <p>ECS and Kubernetes replace failed copies on other hosts. Docker and Compose cannot, because each manages one host (Amazon Web Services, 2026; Kubernetes Authors, 2026).</p>
+  <aside class="notes">Resilience is about what happens when something fails. On one Docker host, restart policies bring a crashed container back, but nothing helps when the host itself fails. ECS and Kubernetes replace failed copies on other machines, and they use health checks to decide what has failed. ECS uses container health checks and the load balancer's target group checks, and Kubernetes uses probes. For host and zone failures, ECS with Fargate spreads a service's tasks across Availability Zones on a best-effort basis. Kubernetes reaches the same result with nodes in several zones and topology spread constraints. For bad releases, the ECS deployment circuit breaker can roll back automatically, while Kubernetes reports a stuck rollout and leaves the rollback to you or to a CD tool such as Harness. The app's design also affects resilience. It helps to have readiness that checks dependencies, liveness that does not, and a clean shutdown on SIGTERM. Ask the class which BagTrack failure would hurt most, and which row protects against it. Sources: Amazon Web Services (2026); Kubernetes Authors (2026).</aside>
+</section>
+
+<section>
+  <h2>What to learn next</h2>
+  <ul>
+    <li>Helm or Kustomize, to package manifests and vary them between environments</li>
+    <li>Ingress and the Gateway API, for HTTP routing into a cluster</li>
+    <li>Node autoscaling with Cluster Autoscaler or Karpenter, next to the HorizontalPodAutoscaler</li>
+    <li>Metrics, logs and traces with Prometheus and OpenTelemetry</li>
+    <li>Deployments in the Harness platform, with services, environments, approvals and rollback for ECS and Kubernetes (Harness, 2026)</li>
+  </ul>
+  <p>Each topic builds on the Pods, Services and Deployments from today.</p>
+  <aside class="notes">Close the course by pointing to the next steps. Helm and Kustomize help teams that need the same manifests with different values in several environments. Ingress and the newer Gateway API route HTTP traffic by host and path to many Services through one load balancer; on EKS the AWS Load Balancer Controller turns them into an ALB. Autoscaling has two layers. The HorizontalPodAutoscaler adds Pods, and the Cluster Autoscaler or Karpenter adds nodes when Pods cannot be scheduled. Observability means metrics, logs and traces, and Prometheus and OpenTelemetry are the common open-source tools. For United's teams, the most relevant next step is deployment in the Harness platform, which takes the images this course built to ECS and EKS with services, environments, approvals and rollback. Students who want a certification can look at the CNCF's Certified Kubernetes Application Developer exam, which covers much of today's material. Ask each student to name one topic they will try first. Sources: Harness (2026); Amazon Web Services (2026).</aside>
+</section>
+
+<section>
+  <h2>References</h2>
+  <ul class="refs">
+    <li>Amazon Web Services. (2026). <em>Amazon EKS User Guide</em> and <em>Amazon ECS Developer Guide</em>. docs.aws.amazon.com</li>
+    <li>Burns, B., Grant, B., Oppenheimer, D., Brewer, E., and Wilkes, J. (2016). Borg, Omega, and Kubernetes. <em>ACM Queue</em>, 14(1).</li>
+    <li>Burns, B., and Oppenheimer, D. (2016). Design patterns for container-based distributed systems. <em>HotCloud '16</em>, USENIX.</li>
+    <li>Harness. (2026). <em>Harness CD documentation</em>. developer.harness.io</li>
+    <li>k3d Authors. (2026). <em>k3d documentation</em>. k3d.io</li>
+    <li>K3s Project Authors. (2026). <em>K3s documentation</em>. docs.k3s.io</li>
+    <li>Kubernetes Authors. (2026). <em>Kubernetes documentation</em>: cluster architecture, controllers, scheduling, Pods, probes, resource management, ConfigMaps, Secrets, Services, DNS, kube-proxy, Deployments, volumes, persistent volumes, StatefulSets, Jobs, CronJobs, DaemonSets, Pod Security Standards. kubernetes.io/docs</li>
+    <li>Verma, A., Pedrosa, L., Korupolu, M., Oppenheimer, D., Tune, E., and Wilkes, J. (2015). Large-scale cluster management at Google with Borg. <em>EuroSys 2015</em>.</li>
+    <li>Wiggins, A. (2011). <em>The Twelve-Factor App</em>. 12factor.net</li>
+  </ul>
+  <aside class="notes">These are the sources for today's slides. The Kubernetes documentation is the main reference. Its concept pages have a version selector, and the lab cluster runs version 1.36. For history and design reasons, start with Burns et al. (2016). It is short and readable, and it explains why Pods, labels and controllers look the way they do. Verma et al. (2015) describe Borg in detail, including the scheduler whose filter and score steps Kubernetes also uses. Burns and Oppenheimer (2016) is a short paper on the multi-container patterns. The AWS guides cover EKS, Fargate and ECS, including the load balancer controller, EBS and EFS storage, and the default encryption of API data. The k3s and k3d documentation explain the lab cluster. Point students to the Harness documentation for the deployment side of the platform that United uses. Source: the list on this slide.</aside>
+</section>
+
+</div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.2.1/dist/reveal.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.2.1/plugin/notes/notes.js"></script>
+<script>
+Reveal.initialize({
+  width: 1280, height: 720, margin: 0, center: false, hash: true,
+  controls: false, progress: false, transition: 'none', backgroundTransition: 'none',
+  slideNumber: 'c', showSlideNumber: 'all', pdfSeparateFragments: false,
+  plugins: [ RevealNotes ]
+});
+</script>
+</body>
+</html>

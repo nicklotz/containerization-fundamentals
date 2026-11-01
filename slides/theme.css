@@ -1,0 +1,215 @@
+/* Containerization Fast Track: slide theme for reveal.js 5 (1280 x 720). */
+
+@font-face {
+  font-family: "Plex Sans";
+  src: url("fonts/IBMPlexSans.ttf") format("truetype");
+  font-weight: 100 700;
+  font-stretch: 85% 100%;
+}
+@font-face {
+  font-family: "Plex Mono";
+  src: url("fonts/IBMPlexMono-Regular.ttf") format("truetype");
+  font-weight: 400;
+}
+@font-face {
+  font-family: "Plex Mono";
+  src: url("fonts/IBMPlexMono-SemiBold.ttf") format("truetype");
+  font-weight: 600;
+}
+
+:root {
+  --ink: #17262B;
+  --muted: #56676D;
+  --line: #B9C8CA;
+  --rule: #E2E9EA;
+  --fill: #F1F6F6;
+  --accent: #0B7A75;
+  --accent-soft: #E3F1F0;
+  --title-bg: #0E2A2E;
+  --title-ink: #F2F7F7;
+  --title-sub: #9FC9C4;
+}
+
+.reveal-viewport { background: #FFFFFF; }
+
+.reveal {
+  font-family: "Plex Sans", "Helvetica Neue", Arial, sans-serif;
+  font-size: 22px;
+  font-weight: 400;
+  color: var(--ink);
+}
+
+.reveal .slides { text-align: left; }
+
+.reveal .slides section {
+  box-sizing: border-box;
+  height: 720px;
+  padding: 48px 76px 54px;
+}
+
+/* Title of a content slide, with a hairline under it. */
+.reveal h2 {
+  font-family: "Plex Sans", sans-serif;
+  font-weight: 600;
+  font-size: 34px;
+  line-height: 1.18;
+  letter-spacing: -0.005em;
+  color: var(--ink);
+  margin: 0 0 26px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--rule);
+  text-transform: none;
+}
+
+.reveal h3 {
+  font-family: "Plex Sans", sans-serif;
+  font-weight: 600;
+  font-size: 23px;
+  color: var(--ink);
+  margin: 0 0 10px;
+  text-transform: none;
+}
+
+.reveal p { margin: 0 0 16px; line-height: 1.45; }
+.reveal strong { font-weight: 600; }
+.reveal em { font-style: italic; }
+.reveal a { color: var(--accent); text-decoration: none; }
+
+/* Lists: small square markers in the accent colour. */
+.reveal ul, .reveal ol { margin: 0 0 16px 0; padding-left: 26px; display: block; }
+.reveal ul { list-style: none; padding-left: 24px; }
+.reveal ul li { position: relative; margin: 0 0 13px; line-height: 1.42; }
+.reveal ul li::before {
+  content: "";
+  position: absolute;
+  left: -22px;
+  top: 0.62em;
+  width: 7px;
+  height: 7px;
+  background: var(--accent);
+}
+.reveal ul ul { margin-top: 10px; }
+.reveal ul ul li::before { background: var(--line); }
+.reveal ol li { margin: 0 0 13px; line-height: 1.42; padding-left: 4px; }
+
+/* Code: monospace on a light panel, no syntax colours. */
+.reveal pre {
+  width: 100%;
+  margin: 0 0 18px;
+  box-shadow: none;
+  font-family: "Plex Mono", Menlo, monospace;
+  font-size: 17px;
+  line-height: 1.5;
+}
+.reveal pre code {
+  display: block;
+  padding: 16px 20px;
+  max-height: 470px;
+  overflow: hidden;
+  background: var(--fill);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  color: var(--ink);
+  white-space: pre;
+}
+.reveal code { font-family: "Plex Mono", Menlo, monospace; font-size: 0.86em; color: var(--ink); }
+.reveal p code, .reveal li code, .reveal td code {
+  background: var(--fill);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+/* Tables: hairlines and a tinted header row. */
+.reveal table { border-collapse: collapse; width: 100%; font-size: 19px; margin: 0 0 18px; }
+.reveal table th {
+  text-align: left;
+  font-weight: 600;
+  font-size: 17px;
+  color: var(--ink);
+  background: var(--accent-soft);
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.reveal table td {
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--rule);
+  vertical-align: top;
+  line-height: 1.35;
+}
+
+/* Two columns. */
+.reveal .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 44px; }
+.reveal .cols > div > :last-child { margin-bottom: 0; }
+
+/* Muted small text, used for one-line context under a diagram. */
+.reveal .note { color: var(--muted); font-size: 18px; }
+
+/* Inline SVG diagrams fill the content width. */
+.reveal svg.diagram { display: block; width: 100%; height: auto; margin: 0 0 18px; }
+
+/* Lab hand-off slide. */
+.reveal .lab-steps { color: var(--ink); }
+.reveal .lab-path {
+  font-family: "Plex Mono", Menlo, monospace;
+  font-size: 19px;
+  color: var(--accent);
+  margin-bottom: 20px;
+}
+
+/* References. */
+.reveal ul.refs { padding-left: 0; }
+.reveal ul.refs li { font-size: 17px; line-height: 1.38; margin-bottom: 9px; color: var(--ink); }
+.reveal ul.refs li::before { display: none; }
+
+/* Title slide. */
+.reveal .slides section.title-slide {
+  padding: 92px 96px 72px;
+  color: var(--title-ink);
+}
+.reveal .title-slide .t-course {
+  font-size: 22px;
+  font-weight: 500;
+  color: var(--title-sub);
+  margin-bottom: 18px;
+}
+.reveal .title-slide .t-main {
+  font-size: 54px;
+  font-weight: 600;
+  line-height: 1.12;
+  color: var(--title-ink);
+  max-width: 980px;
+  padding-bottom: 28px;
+  border-bottom: 2px solid var(--accent);
+  margin-bottom: 26px;
+}
+.reveal .title-slide .t-sub { font-size: 22px; color: var(--title-sub); line-height: 1.5; }
+.reveal .title-slide .t-meta {
+  position: absolute;
+  left: 96px;
+  bottom: 70px;
+  font-size: 20px;
+  color: var(--title-ink);
+}
+
+/* Slide number only, bottom right; hidden on the title slide. */
+.reveal .slide-number {
+  background: none;
+  color: var(--muted);
+  font-family: "Plex Sans", sans-serif;
+  font-size: 14px;
+  right: 30px;
+  bottom: 20px;
+}
+.reveal-viewport.title .slide-number, .reveal.title .slide-number { display: none; }
+
+/* reveal.css sets padding: 0 !important in print mode (?print-pdf); these selectors win over it. */
+html.reveal-print .reveal .slides section:not(.title-slide):not(.stack) { padding: 48px 76px 54px !important; }
+html.reveal-print .reveal .slides section.title-slide { padding: 92px 96px 72px !important; }
+html.reveal-print .reveal .slide-number-pdf {
+  color: var(--muted);
+  font-family: "Plex Sans", sans-serif;
+  font-size: 14px;
+  right: 30px;
+  bottom: 20px;
+}
+html.reveal-print .reveal .pdf-page .title-slide ~ .slide-number-pdf { display: none; }

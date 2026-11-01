@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: shared-scratch
+  namespace: bagtrack
+spec:
+  containers:
+  - name: writer
+    image: public.ecr.aws/docker/library/busybox:1.37
+    command: ["sh", "-c", "while true; do echo \"$(date -u +%H:%M:%S) line from the writer\" >> /scratch/log; sleep 2; done"]
+    volumeMounts:
+    - name: scratch
+      mountPath: /scratch
+  - name: reader
+    image: public.ecr.aws/docker/library/busybox:1.37
+    command: ["sh", "-c", "touch /scratch/log && tail -f /scratch/log"]
+    volumeMounts:
+    - name: scratch
+      mountPath: /scratch
+  volumes:
+  - name: scratch
+    emptyDir: {}

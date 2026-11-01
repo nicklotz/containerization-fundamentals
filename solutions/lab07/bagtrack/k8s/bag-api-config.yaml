@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bag-api-config
+  namespace: bagtrack
+data:
+  HUB: ORD
+  SEED: "true"

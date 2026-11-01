@@ -1,0 +1,112 @@
+/* Baggage claim board. Plain CSS, no external fonts or frameworks. */
+
+:root {
+  --background: #f4f5f7;
+  --panel: #ffffff;
+  --text: #1d2330;
+  --muted: #5f6b7a;
+  --line: #e2e5ea;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* Elements with the hidden attribute stay hidden even if a rule below sets display. */
+[hidden] {
+  display: none !important;
+}
+
+body {
+  margin: 0;
+  padding: 2rem;
+  background: var(--background);
+  color: var(--text);
+  font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+h1 {
+  margin: 0;
+  font-size: 1.8rem;
+}
+
+.updated {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.banner {
+  margin: 0 0 1rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid #f1b8b1;
+  border-radius: 6px;
+  background: #fdecea;
+  color: #8a1c13;
+  font-weight: 600;
+}
+
+table {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  border-spacing: 0;
+  background: var(--panel);
+  overflow: hidden;
+}
+
+th,
+td {
+  padding: 0.6rem 0.9rem;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+}
+
+th {
+  background: #fafbfc;
+  color: var(--muted);
+  font-size: 0.8rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.tag {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/* One colour per checkpoint. */
+.status { font-weight: 600; }
+.status-checked_in { color: #5f6b7a; }
+.status-security { color: #7b4bb3; }
+.status-sorted { color: #a35f00; }
+.status-loaded { color: #1f63c6; }
+.status-unloaded { color: #0f7f86; }
+.status-claimed { color: #2e7d32; }
+
+/* The last data stays visible but dimmed while the API is unreachable. */
+.stale table {
+  opacity: 0.55;
+}
+
+.empty {
+  color: var(--muted);
+}
+
+footer {
+  margin-top: 1rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+}

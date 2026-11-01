@@ -1,0 +1,1046 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Containerization Fast Track · Day 1: Containers and Docker</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.2.1/dist/reset.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.2.1/dist/reveal.css">
+<link rel="stylesheet" href="theme.css">
+<style>
+/* Day 1 only: space between a two-column block and the sentence under it. */
+.reveal .cols + p { margin-top: 26px; }
+</style>
+</head>
+<body>
+<div class="reveal">
+<div class="slides">
+
+<!-- 1 -->
+<section class="title-slide" data-state="title" data-background-color="#0E2A2E">
+  <div class="t-course">Containerization Fast Track</div>
+  <div class="t-main">Day 1: Containers and Docker</div>
+  <div class="t-sub">United Airlines · Pluralsight instructor-led training</div>
+  <div class="t-meta">Nick Lotz</div>
+  <aside class="notes">Welcome to Day 1. Today we work on one machine and cover the basics. We start with why teams split systems into services. Then we look at what a container is, how the Linux kernel isolates and limits it, how images are built and stored, and how containers keep data and reach each other. Each lecture block ends with a lab on your own Ubuntu VM. The labs build BagTrack, a baggage tracking system written for this course. Ask two questions to calibrate the class: who has run a container before, and who works with Amazon ECS, Amazon EKS or Harness today? The answers tell you how much detail to give in the first two blocks.</aside>
+</section>
+
+<!-- 2 -->
+<section>
+  <h2>Your lab machine and its tools</h2>
+  <table>
+    <tr><th>Tool</th><th>What you use it for</th></tr>
+    <tr><td>Docker Engine 29 with the Compose plugin</td><td>Build and run containers</td></tr>
+    <tr><td>Portainer CE 2.45 LTS</td><td>A web UI for Docker on port 9000</td></tr>
+    <tr><td>Local registry (<code>registry:3</code>)</td><td>Stores images at <code>localhost:5000</code></td></tr>
+    <tr><td>Trivy 0.76 and hadolint</td><td>Scan images, produce SBOMs, lint Dockerfiles</td></tr>
+    <tr><td>Harness Open Source 3.3.0</td><td>Git repositories and CI pipelines on port 3000</td></tr>
+    <tr><td>k3d 5.9, k3s v1.36 and kubectl 1.36</td><td>A local Kubernetes cluster with three nodes</td></tr>
+    <tr><td>Headlamp 0.46</td><td>A desktop UI for Kubernetes</td></tr>
+    <tr><td>VS Code</td><td>Editing files</td></tr>
+  </table>
+  <p>Each of you has an Ubuntu 24.04 desktop VM on AWS EC2 with 8 vCPU, 16 GB of memory and an 80 GB disk. You install every tool during the labs and need no AWS, Docker Hub or Harness account.</p>
+  <aside class="notes">Walk through the table. Nothing is preinstalled. Each lab installs the tools it needs, so students see every installation step once. The VM opens in a browser, so nobody needs to install anything on their own laptop. Base images come from Amazon ECR Public, at public.ecr.aws/docker/library, which mirrors the Docker Official Images. Pulling from there avoids Docker Hub's anonymous limit of 100 pulls per 6 hours per IP address. Headlamp is the user interface from the Kubernetes UI special interest group. The older Kubernetes Dashboard was archived in January 2026, so we do not use it. Ask: who already uses VS Code, and who prefers to work in the terminal? Both work for the labs. Sources: Docker documentation, Docker Hub usage and limits; Amazon Web Services, Amazon ECR Public User Guide.</aside>
+</section>
+
+<!-- 3 -->
+<section>
+  <h2>BagTrack, the system you build in this course</h2>
+  <svg class="diagram" viewBox="0 0 1128 400" role="img" aria-label="A browser calls the board, the board proxies API requests to bag-api, bag-api stores bags in Postgres, and the scanner calls bag-api">
+    <defs><marker id="arr-d1-3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#56676D"/></marker></defs>
+    <g text-anchor="middle" fill="#17262B">
+      <rect x="0" y="40" width="170" height="110" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="85" y="90" font-size="20" font-weight="600">Browser</text>
+      <text x="85" y="116" font-size="16" fill="#56676D">on the lab desktop</text>
+      <rect x="240" y="40" width="250" height="110" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="365" y="80" font-size="20" font-weight="600">board</text>
+      <text x="365" y="106" font-size="16" fill="#56676D">static HTML and JavaScript</text>
+      <text x="365" y="128" font-size="16" fill="#56676D">nginx, port 8080</text>
+      <rect x="560" y="40" width="290" height="110" rx="4" fill="#FFFFFF" stroke="#0B7A75" stroke-width="2.5"/>
+      <text x="705" y="80" font-size="20" font-weight="600">bag-api</text>
+      <text x="705" y="106" font-size="16" fill="#56676D">Python, FastAPI</text>
+      <text x="705" y="128" font-size="16" fill="#56676D">/api/bags, /api/stats, /api/info</text>
+      <rect x="920" y="40" width="208" height="110" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="1024" y="90" font-size="20" font-weight="600">db</text>
+      <text x="1024" y="116" font-size="16" fill="#56676D">Postgres 17</text>
+      <rect x="560" y="230" width="290" height="100" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="705" y="266" font-size="20" font-weight="600">scanner</text>
+      <text x="705" y="292" font-size="16" fill="#56676D">Go worker that simulates</text>
+      <text x="705" y="314" font-size="16" fill="#56676D">checkpoint scanners</text>
+      <text x="525" y="84" font-size="16" fill="#56676D">/api/</text>
+      <text x="885" y="84" font-size="16" fill="#56676D">SQL</text>
+    </g>
+    <text x="717" y="196" font-size="16" fill="#56676D">HTTP</text>
+    <g stroke="#56676D" stroke-width="1.8" marker-end="url(#arr-d1-3)">
+      <line x1="172" y1="95" x2="235" y2="95"/>
+      <line x1="492" y1="95" x2="555" y2="95"/>
+      <line x1="852" y1="95" x2="915" y2="95"/>
+      <line x1="705" y1="228" x2="705" y2="155"/>
+    </g>
+    <text x="0" y="386" font-size="17" fill="#56676D">Checkpoint scans move each bag through checked_in, security, sorted, loaded, unloaded and claimed.</text>
+  </svg>
+  <p>The board proxies <code>/api/</code> requests to bag-api by name. You containerize bag-api in Lab 02 and add Postgres and the board in Lab 03.</p>
+  <aside class="notes">BagTrack is a small system written for this course. It models baggage tracking at an airline hub. Each checked bag moves through six checkpoint states, from checked_in to claimed. bag-api is a Python FastAPI service. It stores bags in Postgres when you give it a DATABASE_URL, and it can also keep them in memory. It has a liveness endpoint, /healthz, and a readiness endpoint, /readyz, which checks Postgres. We use both for health checks today and for Kubernetes probes on Day 3. The scanner is a Go program that simulates the checkpoint scanners by calling bag-api. On Day 2 it becomes an image of about 10 MB built FROM scratch. The board is static HTML and JavaScript on unprivileged nginx. Ask: which of these four parts keeps state? Only db does, and that is what makes the other three easy to scale. Source: the course repository.</aside>
+</section>
+
+<!-- 4 -->
+<section>
+  <h2>Monolithic and microservice architectures</h2>
+  <svg class="diagram" viewBox="0 0 1128 340" role="img" aria-label="Left, a monolith with three modules in one process and one database. Right, three separate services that call each other over HTTP, each with its own data">
+    <defs><marker id="arr-d1-4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#56676D"/></marker></defs>
+    <rect x="0" y="10" width="500" height="200" rx="4" fill="#FFFFFF" stroke="#B9C8CA" stroke-width="1.5"/>
+    <text x="24" y="46" font-size="20" font-weight="600" fill="#17262B">Monolith</text>
+    <text x="24" y="72" font-size="16" fill="#56676D">one process, one deployment</text>
+    <text x="628" y="46" font-size="20" font-weight="600" fill="#17262B">Microservices</text>
+    <text x="628" y="72" font-size="16" fill="#56676D">separate processes that call each other over HTTP</text>
+    <g text-anchor="middle" fill="#17262B" font-size="18">
+      <rect x="24" y="100" width="140" height="70" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="94" y="141">Bags</text>
+      <rect x="180" y="100" width="140" height="70" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="250" y="141">Scans</text>
+      <rect x="336" y="100" width="140" height="70" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="406" y="141">Reports</text>
+      <rect x="150" y="266" width="200" height="64" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="250" y="304">One database</text>
+      <rect x="628" y="100" width="140" height="70" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="698" y="131" font-weight="600">Bags</text>
+      <text x="698" y="155" font-size="16" fill="#56676D">service</text>
+      <rect x="808" y="100" width="140" height="70" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="878" y="131" font-weight="600">Scans</text>
+      <text x="878" y="155" font-size="16" fill="#56676D">service</text>
+      <rect x="988" y="100" width="140" height="70" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="1058" y="131" font-weight="600">Reports</text>
+      <text x="1058" y="155" font-size="16" fill="#56676D">service</text>
+      <rect x="628" y="266" width="140" height="64" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="698" y="304" font-size="17">Bags data</text>
+      <rect x="808" y="266" width="140" height="64" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="878" y="304" font-size="17">Scans data</text>
+      <rect x="988" y="266" width="140" height="64" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="1058" y="304" font-size="17">Reports data</text>
+    </g>
+    <g stroke="#56676D" stroke-width="1.8" marker-end="url(#arr-d1-4)">
+      <line x1="250" y1="212" x2="250" y2="261"/>
+      <line x1="770" y1="135" x2="803" y2="135"/>
+      <line x1="950" y1="135" x2="983" y2="135"/>
+      <line x1="698" y1="172" x2="698" y2="261"/>
+      <line x1="878" y1="172" x2="878" y2="261"/>
+      <line x1="1058" y1="172" x2="1058" y2="261"/>
+    </g>
+  </svg>
+  <p>A monolith is built and deployed as one unit. Lewis and Fowler (2014) describe microservices as “a suite of small services, each running in its own process and communicating with lightweight mechanisms”.</p>
+  <aside class="notes">Start with the monolith, because most systems begin as one. In a monolith the modules call each other as functions inside one process and share one database. A change to any module means building and deploying the whole application. Lewis and Fowler's 2014 article named the microservice style. The term was discussed at a workshop of software architects near Venice in May 2011, and the same group settled on "microservices" in May 2012. Newman (2021) defines microservices as independently releasable services that are modeled around a business domain. BagTrack is a small example. bag-api, the scanner and the board are separate programs in Python, Go and JavaScript, each with its own image and its own deployment. Ask: is your team's main application one deployable unit or several? Sources: Lewis, J., and Fowler, M. (2014). Microservices. martinfowler.com. Newman, S. (2021). Building Microservices (2nd ed.). O'Reilly.</aside>
+</section>
+
+<!-- 5 -->
+<section>
+  <h2>Trade-offs between monoliths and microservices</h2>
+  <table>
+    <tr><th>Concern</th><th>Monolith</th><th>Microservices</th></tr>
+    <tr><td>Deployment</td><td>The whole application at once</td><td>Each service on its own schedule</td></tr>
+    <tr><td>Scaling</td><td>Copies of the whole application</td><td>Only the services that need more capacity</td></tr>
+    <tr><td>Failure</td><td>Function calls inside one process</td><td>Network calls that can be slow or fail</td></tr>
+    <tr><td>Data</td><td>One database with local transactions</td><td>Each service owns its data, and consistency across services needs design</td></tr>
+    <tr><td>Operations</td><td>One application to run and monitor</td><td>Many services to deploy, trace and secure</td></tr>
+  </table>
+  <p>Newman (2021) recommends microservices for a specific goal, such as independent deployment, because they add cost in operations, testing and data consistency.</p>
+  <aside class="notes">Read the table row by row and give an example for each row. Deployment: with a monolith, a one-line change to reports waits for the next release of everything. Scaling: if scanning load doubles, a monolith scales every module together, while microservices scale only the scanning service. Failure: a function call does not time out, but a network call can, so every caller needs timeouts and retries. Lewis and Fowler call this "design for failure". Data: once each service owns its tables, a business transaction across two services cannot use one database transaction. Newman also warns about the "distributed monolith", a set of services that must still be deployed together. It has the costs of both styles. Ask: which row matters most for your team today? Sources: Newman, S. (2021). Building Microservices (2nd ed.). Lewis, J., and Fowler, M. (2014). Microservices.</aside>
+</section>
+
+<!-- 6 -->
+<section>
+  <h2>Stateless services and horizontal scaling</h2>
+  <svg class="diagram" viewBox="0 0 1128 330" role="img" aria-label="Requests go to a load balancer, which spreads them over three bag-api instances that all use one Postgres database">
+    <defs><marker id="arr-d1-6" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#56676D"/></marker></defs>
+    <g text-anchor="middle" fill="#17262B">
+      <rect x="0" y="125" width="170" height="80" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="85" y="160" font-size="20" font-weight="600">Requests</text>
+      <text x="85" y="185" font-size="16" fill="#56676D">from users</text>
+      <rect x="240" y="115" width="220" height="100" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="350" y="160" font-size="20" font-weight="600">Load balancer</text>
+      <text x="350" y="186" font-size="16" fill="#56676D">spreads requests</text>
+      <rect x="540" y="10" width="280" height="80" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="680" y="45" font-size="20" font-weight="600">bag-api</text>
+      <text x="680" y="70" font-size="16" fill="#56676D">instance 1</text>
+      <rect x="540" y="125" width="280" height="80" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="680" y="160" font-size="20" font-weight="600">bag-api</text>
+      <text x="680" y="185" font-size="16" fill="#56676D">instance 2</text>
+      <rect x="540" y="240" width="280" height="80" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="680" y="275" font-size="20" font-weight="600">bag-api</text>
+      <text x="680" y="300" font-size="16" fill="#56676D">instance 3</text>
+      <rect x="900" y="115" width="228" height="100" rx="4" fill="#FFFFFF" stroke="#0B7A75" stroke-width="2.5"/>
+      <text x="1014" y="160" font-size="20" font-weight="600">Postgres</text>
+      <text x="1014" y="186" font-size="16" fill="#56676D">shared state</text>
+    </g>
+    <g stroke="#56676D" stroke-width="1.8" marker-end="url(#arr-d1-6)">
+      <line x1="172" y1="165" x2="235" y2="165"/>
+      <line x1="462" y1="150" x2="535" y2="55"/>
+      <line x1="462" y1="165" x2="535" y2="165"/>
+      <line x1="462" y1="180" x2="535" y2="275"/>
+      <line x1="822" y1="55" x2="895" y2="150"/>
+      <line x1="822" y1="165" x2="895" y2="165"/>
+      <line x1="822" y1="275" x2="895" y2="180"/>
+    </g>
+  </svg>
+  <p>A stateless service keeps no client data in memory or on local disk between requests (Wiggins, 2011). Any instance can answer any request, so you add instances to handle more load.</p>
+  <aside class="notes">There are two ways to handle more load. Vertical scaling gives one instance a bigger machine. It has an upper limit and usually needs a restart. Horizontal scaling adds more instances behind a load balancer, which twelve-factor calls scaling out through the process model. It works only if the instances are interchangeable, so none of them may keep data that a later request needs. Sticky sessions send a user back to the same instance. They are a workaround that breaks when that instance stops. BagTrack shows this on Day 3. You scale bag-api to several replicas, and the board's footer, which comes from /api/info, shows a different hostname as requests are spread out. Ask: what does your service keep in memory between requests today, such as sessions or caches? Source: Wiggins, A. (2011). The Twelve-Factor App, factors VI (Processes) and VIII (Concurrency). 12factor.net.</aside>
+</section>
+
+<!-- 7 -->
+<section>
+  <h2>State belongs in backing services</h2>
+  <svg class="diagram" viewBox="0 0 1128 300" role="img" aria-label="bag-api reads DATABASE_URL from its environment, which points either to a Postgres container on the lab VM or to a managed PostgreSQL service">
+    <defs><marker id="arr-d1-7" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#56676D"/></marker></defs>
+    <g text-anchor="middle" fill="#17262B">
+      <rect x="0" y="95" width="270" height="110" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="135" y="142" font-size="20" font-weight="600">bag-api</text>
+      <text x="135" y="168" font-size="16" fill="#56676D">container with no local data</text>
+      <rect x="350" y="95" width="300" height="110" rx="4" fill="#FFFFFF" stroke="#0B7A75" stroke-width="2.5"/>
+      <text x="500" y="142" font-size="20" font-weight="600" font-family="Plex Mono, monospace">DATABASE_URL</text>
+      <text x="500" y="168" font-size="16" fill="#56676D">set in the environment</text>
+      <rect x="780" y="20" width="348" height="110" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="954" y="68" font-size="20" font-weight="600">Postgres 17 container</text>
+      <text x="954" y="94" font-size="16" fill="#56676D">on your lab VM in Lab 03</text>
+      <rect x="780" y="170" width="348" height="110" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="954" y="218" font-size="20" font-weight="600">Managed PostgreSQL</text>
+      <text x="954" y="244" font-size="16" fill="#56676D">for example Amazon RDS</text>
+      <text x="716" y="156" font-size="16" fill="#56676D">or</text>
+    </g>
+    <g stroke="#56676D" stroke-width="1.8" marker-end="url(#arr-d1-7)">
+      <line x1="272" y1="150" x2="345" y2="150"/>
+      <line x1="652" y1="130" x2="775" y2="80"/>
+      <line x1="652" y1="170" x2="775" y2="220"/>
+    </g>
+  </svg>
+  <p>Twelve-factor treats a database, queue or cache as a backing service, an attached resource that the app finds through a URL in its config (Wiggins, 2011). Changing the URL switches the database without changing the code.</p>
+  <aside class="notes">A container's own filesystem is temporary. When the container is removed, its writable layer is removed with it. Anything that must outlive one instance goes to a backing service. Wiggins lists datastores, message queues, mail services and caches as examples. He says a deploy should be able to swap a local database for a managed one, such as Amazon RDS, by changing only the resource handle in the config. For BagTrack that handle is DATABASE_URL. In Lab 03 it points to a Postgres container on your VM. In AWS the same image could point to a managed database. bag-api can also keep bags in memory. Ask: what happens if two bag-api replicas run in memory mode? Each one has its own list of bags, and the board shows different data depending on which replica answers. Source: Wiggins, A. (2011). The Twelve-Factor App, factor IV (Backing services).</aside>
+</section>
+
+<!-- 8 -->
+<section>
+  <h2>Configuration comes from the environment</h2>
+  <ul>
+    <li>Config is everything that varies between deploys, such as database URLs, credentials and hostnames (Wiggins, 2011)</li>
+    <li>The application reads it from environment variables when it starts</li>
+    <li>The same image runs in development, test and production</li>
+    <li>Secrets are injected at run time and are never built into the image</li>
+  </ul>
+  <p>ECS task definitions, Compose files and Kubernetes Pods all set environment variables for a container.</p>
+  <aside class="notes">Twelve-factor's third factor says to store config in the environment. Config here means the values that change between deploys: resource handles, credentials and hostnames. It does not include internal settings such as URL routes, which stay in the code. Wiggins gives a test for this. Could you publish the code as open source right now without leaking a credential? If you could, config is separate from code. Environment variables work with every language and every orchestrator. In Lab 03 you pass DATABASE_URL to bag-api with docker run -e. On Day 2 you set it in Compose and in an ECS task definition, where secrets come from Secrets Manager or SSM Parameter Store. On Day 3 it comes from a ConfigMap and a Secret. Ask: where does your application read its database password from today? Source: Wiggins, A. (2011). The Twelve-Factor App, factor III (Config).</aside>
+</section>
+
+<!-- 9 -->
+<section>
+  <h2>Disposable processes start fast and stop cleanly</h2>
+  <ul>
+    <li>Start in a few seconds, so new instances can take traffic soon after a scale-out</li>
+    <li>On SIGTERM, stop accepting new requests, finish the current ones, then exit</li>
+    <li>A worker returns its current job to the queue before it exits</li>
+    <li>Expect to be stopped at any time, by a deploy, a scale-in or host maintenance</li>
+  </ul>
+  <p>Wiggins (2011) calls processes that can be started or stopped at a moment's notice disposable. Docker, ECS and Kubernetes all send SIGTERM first and SIGKILL after a grace period.</p>
+  <aside class="notes">Factor IX says processes should be disposable. Fast startup matters because orchestrators replace instances all the time, during deploys, scaling and host maintenance. Graceful shutdown matters because the orchestrator sends SIGTERM first, waits for a grace period, and then sends SIGKILL, which a process cannot catch. Docker waits 10 seconds by default. ECS and Kubernetes wait 30 seconds by default. A web process should stop accepting connections, finish the requests in flight and exit. A worker, such as BagTrack's scanner, should finish or hand back its current job. In Lab 01 you see exit code 143 for a process that ended on SIGTERM and 137 for one that was killed. Ask: how long does your service take to start, and what happens to requests in flight during a deploy? Sources: Wiggins (2011), factors VI and IX; Docker documentation, docker container stop; Amazon ECS Developer Guide.</aside>
+</section>
+
+<!-- 10 -->
+<section>
+  <h2>The CNCF definition of cloud native</h2>
+  <ul>
+    <li>Practices to develop, build and deploy workloads in public, private and hybrid clouds, at scale and in a programmatic, repeatable way</li>
+    <li>Loosely coupled systems that are secure, resilient, manageable, sustainable and observable</li>
+    <li>Usually built from containers, service meshes, multi-tenancy, microservices, immutable infrastructure, serverless and declarative APIs</li>
+    <li>Automation that allows frequent, predictable, high-impact changes with minimal toil</li>
+  </ul>
+  <p>Version 1.1 replaced the 2018 text in 2024 and added multi-tenancy, serverless, security and sustainability (CNCF TOC, 2018, 2024).</p>
+  <aside class="notes">The Cloud Native Computing Foundation was founded in 2015 under the Linux Foundation, and Kubernetes became its first hosted project. Its Technical Oversight Committee approved the first definition of cloud native on 11 June 2018 and version 1.1 on 26 February 2024. Read the definition as a list of properties. Containers are one item in the list, next to microservices, immutable infrastructure and declarative APIs. Immutable infrastructure means you replace a server or a container instead of changing it in place. A declarative API means you describe the state you want, such as three replicas, and a controller works to reach it. BagTrack uses several of these. It is a set of small services, it ships as images that do not change, and on Days 2 and 3 you describe it in Compose and Kubernetes files. Ask: which items on this list does your team already use? Source: CNCF Technical Oversight Committee (2018, 2024), CNCF Cloud Native Definition v1.0 and v1.1.</aside>
+</section>
+
+<!-- 11 -->
+<section>
+  <h2>Where containers fit at United</h2>
+  <table>
+    <tr><th>At United</th><th>What it does</th><th>In this course</th></tr>
+    <tr><td>Amazon ECS with AWS Fargate</td><td>Runs most container workloads, with no servers to manage</td><td>Docker Compose and ECS task-definition files</td></tr>
+    <tr><td>Amazon EKS</td><td>Managed Kubernetes</td><td>A k3d cluster running k3s v1.36</td></tr>
+    <tr><td>Amazon ECR</td><td>Stores container images</td><td>A local registry at <code>localhost:5000</code></td></tr>
+    <tr><td>Harness platform</td><td>Runs deployments</td><td>Harness Open Source 3.3.0</td></tr>
+  </table>
+  <p>The Digital Technology teams chose ECS with Fargate in 2019–2020, “when Kubernetes was hard”.</p>
+  <aside class="notes">This slide connects the course to the platforms the class uses at work. Amazon ECS is the container orchestrator from AWS, and AWS Fargate runs ECS tasks without EC2 instances to manage. United's Digital Technology teams chose ECS with Fargate in 2019 and 2020, "when Kubernetes was hard", and they also run Amazon EKS. Deployments go through the Harness platform, and images are stored in Amazon ECR. The lab VMs have no AWS accounts, so each part has a stand-in. Compose describes a multi-container application much like an ECS task definition does, and on Day 2 you map each Compose setting to its task-definition field. k3d gives you a real Kubernetes API, as EKS does. The local registry implements the same OCI Distribution API as ECR. Harness Open Source runs pipelines from YAML in the repository. Ask: which of these do you work with? Sources: Amazon ECS Developer Guide; AWS Fargate documentation; Amazon EKS User Guide.</aside>
+</section>
+
+<!-- 12 -->
+<section>
+  <h2>How virtual machines and containers share a host</h2>
+  <svg class="diagram" viewBox="0 0 1128 330" role="img" aria-label="Left, two virtual machines each with an app, libraries and a guest kernel, on a hypervisor and hardware. Right, three containers with an app and libraries each, on one shared host kernel and hardware">
+    <text x="0" y="22" font-size="20" font-weight="600" fill="#17262B">Virtual machines</text>
+    <text x="608" y="22" font-size="20" font-weight="600" fill="#17262B">Containers</text>
+    <g text-anchor="middle" fill="#17262B" font-size="18">
+      <rect x="0" y="40" width="250" height="48" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="125" y="70">App</text>
+      <rect x="0" y="96" width="250" height="48" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="125" y="126">Libraries</text>
+      <rect x="0" y="152" width="250" height="48" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="125" y="182">Guest kernel</text>
+      <rect x="270" y="40" width="250" height="48" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="395" y="70">App</text>
+      <rect x="270" y="96" width="250" height="48" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="395" y="126">Libraries</text>
+      <rect x="270" y="152" width="250" height="48" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="395" y="182">Guest kernel</text>
+      <rect x="0" y="218" width="520" height="48" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="260" y="248">Hypervisor</text>
+      <rect x="0" y="274" width="520" height="48" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="260" y="304">Hardware</text>
+      <rect x="608" y="40" width="160" height="48" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="688" y="70">App</text>
+      <rect x="608" y="96" width="160" height="48" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="688" y="126">Libraries</text>
+      <rect x="788" y="40" width="160" height="48" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="868" y="70">App</text>
+      <rect x="788" y="96" width="160" height="48" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="868" y="126">Libraries</text>
+      <rect x="968" y="40" width="160" height="48" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="1048" y="70">App</text>
+      <rect x="968" y="96" width="160" height="48" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="1048" y="126">Libraries</text>
+      <text x="868" y="182" font-size="16" fill="#56676D">no kernel of their own</text>
+      <rect x="608" y="218" width="520" height="48" rx="4" fill="#FFFFFF" stroke="#0B7A75" stroke-width="2.5"/>
+      <text x="868" y="248">Host Linux kernel, shared by all containers</text>
+      <rect x="608" y="274" width="520" height="48" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="868" y="304">Hardware</text>
+    </g>
+  </svg>
+  <p>A virtual machine runs its own kernel on virtual hardware that the hypervisor provides. Containers are processes that share the host's kernel, isolated by namespaces and limited by cgroups.</p>
+  <aside class="notes">Draw the two stacks and compare them layer by layer. A hypervisor gives each virtual machine virtual hardware, and each machine boots its own kernel. A container has no kernel of its own. Its processes make system calls to the host kernel, which isolates and limits them. Your lab machine is itself a virtual machine on EC2, so the containers you start today run inside a VM, which is the usual arrangement in the cloud. On ECS with the EC2 launch type, many tasks share each instance's kernel. With Fargate, AWS runs each task in an isolated virtual environment that does not share CPU, memory, storage or network interfaces with other tasks. Ask: your containers run inside your Ubuntu VM, so whose kernel do they use? They use the VM's Ubuntu kernel. Sources: Felter et al. (2015); Amazon ECS Developer Guide, Fargate security considerations.</aside>
+</section>
+
+<!-- 13 -->
+<section>
+  <h2>Comparing virtual machines and containers</h2>
+  <table>
+    <tr><th>Property</th><th>Virtual machine</th><th>Container</th></tr>
+    <tr><td>Kernel</td><td>Its own guest kernel</td><td>The host's kernel</td></tr>
+    <tr><td>Starts by</td><td>Booting an operating system</td><td>Starting a process</td></tr>
+    <tr><td>Image holds</td><td>A whole operating system</td><td>An application, its libraries and a minimal user space</td></tr>
+    <tr><td>Isolation</td><td>Virtual hardware from a hypervisor</td><td>Kernel features: namespaces, cgroups, capabilities and seccomp</td></tr>
+    <tr><td>Typical size</td><td>Gigabytes</td><td>Megabytes to a few hundred megabytes</td></tr>
+  </table>
+  <p>Felter et al. (2015) found that containers performed as well as or better than KVM virtual machines in almost all of their tests. AWS Fargate runs each task in its own isolated virtual environment (Amazon Web Services, n.d.).</p>
+  <aside class="notes">Go through the rows. The main difference is the kernel. Containers start a process instead of booting an operating system, so they start quickly, and their images hold only what the application needs. The cost is a weaker boundary. All containers on a host share one kernel, so a kernel vulnerability or a badly configured container can affect its neighbours. That is why some platforms, Fargate among them, put a virtual machine boundary around each task. Felter and colleagues at IBM Research compared Docker and KVM with bare metal for CPU, memory, storage and network workloads. Both needed tuning for I/O-heavy workloads, and Docker's NAT networking added overhead. Ask: which workloads would you still run in a virtual machine? Examples are another operating system, a custom kernel module, or strong isolation between customers. Sources: Felter, W., et al. (2015), IEEE ISPASS; Amazon ECS Developer Guide, Fargate security considerations.</aside>
+</section>
+
+<!-- 14 -->
+<section>
+  <h2>A short history of Linux containers</h2>
+  <table>
+    <tr><th>Year</th><th>Development</th></tr>
+    <tr><td>1979</td><td><code>chroot</code> in Version 7 Unix gives a process its own root directory</td></tr>
+    <tr><td>2000</td><td>FreeBSD jails isolate processes, users and network addresses</td></tr>
+    <tr><td>2002</td><td>Linux 2.4.19 adds the first namespace type, for mount points</td></tr>
+    <tr><td>2008</td><td>Linux 2.6.24 adds control groups, and LXC combines them with namespaces</td></tr>
+    <tr><td>2013</td><td>Docker adds a portable image format and a simple command line (Merkel, 2014)</td></tr>
+    <tr><td>2015</td><td>Docker, CoreOS and others found the Open Container Initiative</td></tr>
+  </table>
+  <p>Docker used kernel features that already existed and made them easy to use, with images that run the same way on any Linux host.</p>
+  <aside class="notes">The ideas behind containers are older than Docker. chroot, added to Unix in 1979, changes the root directory that a process sees. FreeBSD jails extended the idea in 2000. Linux built the same isolation from smaller parts. Namespaces started with mount namespaces in 2002. Control groups came from Google engineers and were merged in Linux 2.6.24 in 2008. LXC combined the two into system containers. dotCloud released Docker in 2013. Docker first ran containers through LXC and replaced it with its own libcontainer library in 2014. Merkel's 2014 article describes what was new: an image format and tooling that start a container the same way on a laptop and on a server. In 2015 Docker gave libcontainer, as runc, to the new Open Container Initiative. Ask: has anyone used chroot or LXC? Sources: Kerrisk, namespaces(7) and cgroups(7); Merkel (2014), Linux Journal; Open Container Initiative.</aside>
+</section>
+
+<!-- 15 -->
+<section>
+  <h2>Image, container, registry and runtime</h2>
+  <table>
+    <tr><th>Term</th><th>Meaning</th><th>Example</th></tr>
+    <tr><td>Image</td><td>A read-only package of filesystem layers and settings, such as the start command</td><td><code>postgres:17</code></td></tr>
+    <tr><td>Container</td><td>A running or stopped instance of an image, with its own writable layer</td><td>The <code>db</code> container in BagTrack</td></tr>
+    <tr><td>Registry</td><td>A server that stores images and serves them over HTTP</td><td>Amazon ECR, <code>localhost:5000</code></td></tr>
+    <tr><td>Runtime</td><td>Software that creates and runs containers from images</td><td>containerd, runc</td></tr>
+  </table>
+  <p>One image can start many containers, in the same way one program file can start many processes.</p>
+  <aside class="notes">These four words come up in every lab, so define them carefully. An image is a set of files and settings. Nothing in it runs until a runtime starts it. A container is what you get when a runtime starts an image: one or more processes plus a writable layer. Removing a container does not remove its image. A registry is a server with an HTTP API for storing and fetching images, organised into repositories and tags. The word runtime has two meanings. A low-level runtime, such as runc or crun, implements the OCI Runtime Specification and starts the process. A high-level runtime, such as containerd or CRI-O, pulls images, manages storage and calls the low-level runtime. Ask: if you delete a container, is its image gone? It is not, and docker image ls still lists it. Source: Open Container Initiative (2024), Image Format, Runtime and Distribution specifications.</aside>
+</section>
+
+<!-- 16 -->
+<section>
+  <h2>The three OCI specifications</h2>
+  <table>
+    <tr><th>Specification</th><th>What it defines</th><th>Implemented by</th></tr>
+    <tr><td>Image Format v1.1</td><td>The manifest, configuration, filesystem layers and image index</td><td>BuildKit, Podman, containerd</td></tr>
+    <tr><td>Runtime v1.2</td><td>A bundle with a root filesystem and <code>config.json</code>, and the create, start, kill, delete and state operations</td><td>runc, crun</td></tr>
+    <tr><td>Distribution v1.1</td><td>An HTTP API to push, pull and list content in a registry</td><td>Docker Hub, Amazon ECR, <code>registry:3</code></td></tr>
+  </table>
+  <p>Because Docker, Podman, containerd and CRI-O all follow these specifications, an image you build on your VM runs under any of them (Open Container Initiative, 2024).</p>
+  <aside class="notes">The Open Container Initiative was set up in June 2015 under the Linux Foundation by Docker, CoreOS and others, so that no single company owned the container format. Docker gave it its image format and runc. Version 1.0 of the image and runtime specifications came out in 2017. The 1.1 releases in 2024 added a standard way to attach artifacts, such as signatures and SBOMs, to an image, and you meet those on Day 2. The image specification describes what a builder produces. The runtime specification describes what runc receives: a directory with the root filesystem and a config.json that lists namespaces, cgroup limits, mounts and the process to run. The distribution specification is the HTTP API that registries implement. Example: the bag-api image you build with Docker runs unchanged under containerd on your k3d cluster in Lab 07. Source: Open Container Initiative (2024), Image Format v1.1, Runtime v1.2 and Distribution v1.1 specifications.</aside>
+</section>
+
+<!-- 17 -->
+<section>
+  <h2>How Docker runs a container</h2>
+  <svg class="diagram" viewBox="0 0 1128 340" role="img" aria-label="The docker CLI calls dockerd over a REST API on a Unix socket, dockerd calls containerd over gRPC, containerd starts a shim, the shim starts runc, and runc creates the container process">
+    <defs><marker id="arr-d1-17" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#56676D"/></marker></defs>
+    <g text-anchor="middle" fill="#17262B">
+      <rect x="0" y="30" width="270" height="100" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="135" y="74" font-size="20" font-weight="600">docker CLI</text>
+      <text x="135" y="100" font-size="16" fill="#56676D">the commands you type</text>
+      <rect x="429" y="30" width="270" height="100" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="564" y="74" font-size="20" font-weight="600">dockerd</text>
+      <text x="564" y="100" font-size="16" fill="#56676D">images, networks, volumes</text>
+      <rect x="858" y="30" width="270" height="100" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="993" y="74" font-size="20" font-weight="600">containerd</text>
+      <text x="993" y="100" font-size="16" fill="#56676D">containers, image store</text>
+      <rect x="858" y="220" width="270" height="110" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="993" y="258" font-size="20" font-weight="600">shim</text>
+      <text x="993" y="284" font-size="16" fill="#56676D" font-family="Plex Mono, monospace">containerd-shim-runc-v2</text>
+      <text x="993" y="308" font-size="16" fill="#56676D">one per container</text>
+      <rect x="429" y="220" width="270" height="110" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="564" y="258" font-size="20" font-weight="600">runc</text>
+      <text x="564" y="284" font-size="16" fill="#56676D">creates namespaces</text>
+      <text x="564" y="308" font-size="16" fill="#56676D">and cgroups, then exits</text>
+      <rect x="0" y="220" width="270" height="110" rx="4" fill="#FFFFFF" stroke="#0B7A75" stroke-width="2.5"/>
+      <text x="135" y="266" font-size="20" font-weight="600">Container process</text>
+      <text x="135" y="292" font-size="16" fill="#56676D">PID 1 in its namespaces</text>
+      <text x="350" y="68" font-size="16" fill="#56676D">REST API</text>
+      <text x="350" y="104" font-size="16" fill="#56676D">Unix socket</text>
+      <text x="779" y="68" font-size="16" fill="#56676D">gRPC</text>
+      <text x="779" y="263" font-size="16" fill="#56676D">starts</text>
+      <text x="350" y="263" font-size="16" fill="#56676D">creates</text>
+    </g>
+    <g stroke="#56676D" stroke-width="1.8" marker-end="url(#arr-d1-17)">
+      <line x1="272" y1="80" x2="424" y2="80"/>
+      <line x1="701" y1="80" x2="853" y2="80"/>
+      <line x1="993" y1="132" x2="993" y2="215"/>
+      <line x1="856" y1="275" x2="704" y2="275"/>
+      <line x1="427" y1="275" x2="275" y2="275"/>
+    </g>
+  </svg>
+  <p>The runc process exits after it starts the container process, and the shim stays as the parent of the container process. Docker 29 also keeps images in containerd's image store by default.</p>
+  <aside class="notes">Follow one docker run through the diagram. The CLI sends a REST request to dockerd over the Unix socket /var/run/docker.sock. dockerd resolves the image, sets up networks and volumes, and asks containerd over gRPC to create the container. In Docker 29 the images are stored in containerd's image store. containerd starts one shim process per container. The shim calls runc with an OCI bundle. runc creates the namespaces and cgroups, starts your process and exits. The shim keeps the process's output and exit code, which lets containerd restart without stopping containers. Kubernetes nodes, including k3s and Amazon EKS nodes, do not use dockerd. The kubelet calls containerd through the Container Runtime Interface. Anyone who can write to docker.sock controls dockerd, which runs as root, and Day 2 returns to this. Ask: which process will be the parent of your container in Lab 01? Sources: Docker documentation; Kubernetes documentation, Container runtimes.</aside>
+</section>
+
+<!-- 18 -->
+<section>
+  <h2>Other tools that run OCI containers</h2>
+  <table>
+    <tr><th>Tool</th><th>How it works</th><th>Where you meet it</th></tr>
+    <tr><td>Docker Engine</td><td>dockerd on top of containerd and runc</td><td>Your lab VM, developer machines</td></tr>
+    <tr><td>Podman</td><td>No daemon, can run without root, accepts most docker commands</td><td>Red Hat Enterprise Linux</td></tr>
+    <tr><td>nerdctl</td><td>A docker-style command line for containerd</td><td>Hosts with containerd and no Docker</td></tr>
+    <tr><td>CRI-O</td><td>A runtime made only for Kubernetes, through the CRI</td><td>Red Hat OpenShift</td></tr>
+  </table>
+  <p>Kubernetes removed its built-in Docker support, dockershim, in release 1.24 (Kubernetes, n.d.). Amazon EKS AMIs use containerd from Kubernetes 1.24 onward (Amazon Web Services, n.d.).</p>
+  <aside class="notes">Docker made containers popular, and it is one of several tools that run OCI images. Podman comes from Red Hat. It has no daemon: each container is a child of the podman command or of systemd, and it runs well as an ordinary user. Many people alias docker to podman. nerdctl is a containerd sub-project that gives containerd a docker-style command line. CRI-O implements only the Kubernetes Container Runtime Interface and is the runtime in OpenShift. When Kubernetes removed dockershim in release 1.24 in 2022, images built with Docker kept working, because the node runtimes still read OCI images. Only clusters that used dockerd as the node runtime had to change. EKS nodes and k3s use containerd, which is why your k3d cluster can run the images you build with Docker. Ask: has anyone used Podman? Sources: Kubernetes documentation, Container runtimes; Amazon EKS User Guide, Amazon EKS ended support for Dockershim.</aside>
+</section>
+
+<!-- 19 -->
+<section>
+  <h2>Container registries</h2>
+  <table>
+    <tr><th>Registry</th><th>Address</th><th>Notes</th></tr>
+    <tr><td>Docker Hub</td><td><code>docker.io</code>, the default</td><td>Anonymous limit of 100 pulls per 6 hours per IP</td></tr>
+    <tr><td>Amazon ECR</td><td><code>&lt;account&gt;.dkr.ecr.&lt;region&gt;.amazonaws.com</code></td><td>Private, holds United's images</td></tr>
+    <tr><td>ECR Public</td><td><code>public.ecr.aws</code></td><td>Mirrors Docker Official Images under <code>docker/library</code></td></tr>
+    <tr><td>Local registry</td><td><code>localhost:5000</code></td><td>A <code>registry:3</code> container on your VM</td></tr>
+  </table>
+  <p>All four implement the OCI Distribution API, so docker push and docker pull work the same way with each. The labs pull base images from ECR Public to avoid Docker Hub's limit (Docker, n.d.).</p>
+  <aside class="notes">A registry holds repositories, and a repository holds tagged images. Docker Hub is the default. An image name without a registry host, such as python:3.13-slim, means docker.io/library/python:3.13-slim, where library is the namespace for Docker Official Images. Amazon ECR gives each AWS account a private registry in each region, at an address built from the account ID and the region. You log in with a short-lived token from the AWS CLI. You can also make a repository's tags immutable, so that a pushed tag cannot be overwritten. United stores its images in ECR. Amazon ECR Public mirrors the Docker Official Images under public.ecr.aws/docker/library, which is why the labs use it. The board's unprivileged nginx image comes from nginx's own repository there, public.ecr.aws/nginx/nginx-unprivileged. The local registry is version 3 of the registry image from the CNCF Distribution project. Ask: who has pushed an image to ECR, and how did you log in? Sources: Docker Hub usage and limits; Amazon ECR User Guide; Amazon ECR Public User Guide.</aside>
+</section>
+
+<!-- 20 -->
+<section>
+  <h2>A container is a process on the host</h2>
+  <svg class="diagram" viewBox="0 0 1128 280" role="img" aria-label="From the host, the nginx process has PID 4211 next to systemd, containerd and the shim. Inside the container, the same process has PID 1">
+    <defs><marker id="arr-d1-20" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#56676D"/></marker></defs>
+    <rect x="0" y="10" width="560" height="250" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+    <rect x="740" y="10" width="388" height="250" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+    <rect x="12" y="184" width="536" height="44" rx="4" fill="#FFFFFF" stroke="#0B7A75" stroke-width="2.5"/>
+    <g fill="#17262B">
+      <text x="24" y="48" font-size="20" font-weight="600">Seen from the host</text>
+      <text x="764" y="48" font-size="20" font-weight="600">Seen inside the container</text>
+    </g>
+    <g font-family="Plex Mono, monospace" font-size="17" fill="#17262B">
+      <text x="24" y="104">PID 1</text><text x="154" y="104">systemd</text>
+      <text x="24" y="140">PID 812</text><text x="154" y="140">containerd</text>
+      <text x="24" y="176">PID 4180</text><text x="154" y="176">containerd-shim-runc-v2</text>
+      <text x="24" y="212">PID 4211</text><text x="154" y="212">nginx: master process</text>
+      <text x="764" y="212">PID 1</text><text x="854" y="212">nginx: master process</text>
+    </g>
+    <text x="651" y="194" font-size="16" fill="#56676D" text-anchor="middle">same process</text>
+    <g stroke="#56676D" stroke-width="1.8" marker-end="url(#arr-d1-20)">
+      <line x1="562" y1="206" x2="735" y2="206"/>
+    </g>
+  </svg>
+  <p><code>docker inspect --format '{{.State.Pid}}' web</code> prints the host PID of a container's main process. The kernel isolates this process with namespaces and limits its resources with cgroups.</p>
+  <aside class="notes">This is the central idea of the day. The Linux kernel has no object called a container. A container is an ordinary process that starts with its own set of namespaces and is placed in its own cgroup. From the host, ps shows the nginx process like any other process, with a host PID. Inside the container, the PID namespace gives the same process PID 1, and it sees no other processes. The PIDs on the slide are examples, and yours will differ. In Lab 01 you find the host PID of a container and compare its namespaces with the host's. Ask: if you run sudo kill -9 on that host PID, what happens to the container? It stops, and docker ps -a shows exit code 137. Sources: Kerrisk, namespaces(7) and pid_namespaces(7); Docker documentation, docker inspect.</aside>
+</section>
+
+<!-- 21 -->
+<section>
+  <h2>Linux namespaces</h2>
+  <table>
+    <tr><th>Namespace</th><th>Isolates</th><th>In a Docker container</th></tr>
+    <tr><td><code>pid</code></td><td>Process IDs</td><td>The main process is PID 1 and sees only its own processes</td></tr>
+    <tr><td><code>net</code></td><td>Interfaces, IP addresses, ports, routes</td><td>Its own <code>eth0</code> and IP address</td></tr>
+    <tr><td><code>mnt</code></td><td>Mount points</td><td>Its own root filesystem, built from the image</td></tr>
+    <tr><td><code>uts</code></td><td>Hostname and NIS domain name</td><td>The hostname defaults to the container ID</td></tr>
+    <tr><td><code>ipc</code></td><td>System V IPC and POSIX message queues</td><td>Its own shared memory</td></tr>
+    <tr><td><code>user</code></td><td>User and group IDs</td><td>Not used unless you enable it</td></tr>
+    <tr><td><code>cgroup</code></td><td>The view of the cgroup tree</td><td>Its own cgroup appears as the root</td></tr>
+  </table>
+  <p>A namespace wraps a global resource so that the processes inside see their own isolated instance of it (Kerrisk, n.d., namespaces(7)).</p>
+  <aside class="notes">Each row is one namespace type from the namespaces(7) manual page. Docker creates a new namespace of each type for a container. The exception is user, which stays off unless the daemon uses user namespace remapping or runs rootless. Each process's namespaces appear as links under /proc/PID/ns. Two processes in the same namespace show the same inode number, which is how you check whether they share it. Namespaces can be shared on purpose. docker run --network container:web puts a second container into web's network namespace, so the two talk over localhost. A Kubernetes Pod works this way, and so does an ECS task on Fargate, where the containers in one task share a network namespace. Linux 5.6 added a time namespace, which Docker does not create by default. Ask: which namespace must two containers share to reach each other on localhost? Source: Kerrisk, M., namespaces(7), man7.org.</aside>
+</section>
+
+<!-- 22 -->
+<section>
+  <h2>Control groups limit resources</h2>
+  <table>
+    <tr><th>Resource</th><th>docker run flag</th><th>cgroup v2 file</th><th>At the limit</th></tr>
+    <tr><td>Memory</td><td><code>--memory 64m</code></td><td><code>memory.max</code></td><td>The kernel reclaims memory, then the OOM killer ends a process</td></tr>
+    <tr><td>CPU</td><td><code>--cpus 0.5</code></td><td><code>cpu.max</code></td><td>The process is throttled and runs slower</td></tr>
+    <tr><td>Processes</td><td><code>--pids-limit 100</code></td><td><code>pids.max</code></td><td>New processes and threads fail to start</td></tr>
+  </table>
+  <p>Ubuntu 24.04 uses cgroup v2, with one unified hierarchy under <code>/sys/fs/cgroup</code> (Kerrisk, n.d., cgroups(7)). Without these flags a container has no limits and can use as much as the host allows (Docker, n.d.).</p>
+  <aside class="notes">Namespaces decide what a process can see. Control groups decide how much CPU, memory and other resources it can use. The kernel arranges processes in a tree of groups and applies limits to each group through files. Version 1 had a separate tree for each controller. Version 2, stable since Linux 4.5, has one tree, which makes limits easier to follow. Docker turns each flag into a write to a file in the container's cgroup. For example, --cpus 0.5 becomes "50000 100000" in cpu.max, which means 50 ms of CPU time in every 100 ms period. In Lab 01, --memory 64m shows up as 67108864 in memory.max, which is 64 MiB in bytes. A CPU limit never kills a process. It only slows the process down. A memory limit is a hard ceiling. ECS task definitions and Kubernetes resource limits end up as the same cgroup settings. Ask: which limit would you set first for a service with a memory leak? Sources: Kerrisk, cgroups(7); Docker documentation, Resource constraints.</aside>
+</section>
+
+<!-- 23 -->
+<section>
+  <h2>What happens when a container runs out of memory</h2>
+  <svg class="diagram" viewBox="0 0 1128 170" role="img" aria-label="Memory usage grows, reaches memory.max, the OOM killer sends SIGKILL to a process in the cgroup, and the container exits with code 137">
+    <defs><marker id="arr-d1-23" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#56676D"/></marker></defs>
+    <g text-anchor="middle" fill="#17262B">
+      <rect x="0" y="20" width="246" height="130" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="123" y="64" font-size="20" font-weight="600">Usage grows</text>
+      <text x="123" y="92" font-size="16" fill="#56676D">the app keeps</text>
+      <text x="123" y="116" font-size="16" fill="#56676D">allocating memory</text>
+      <rect x="294" y="20" width="246" height="130" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="417" y="64" font-size="20" font-weight="600">Limit reached</text>
+      <text x="417" y="92" font-size="16" fill="#56676D">usage hits memory.max</text>
+      <text x="417" y="116" font-size="16" fill="#56676D">and reclaim fails</text>
+      <rect x="588" y="20" width="246" height="130" rx="4" fill="#FFFFFF" stroke="#0B7A75" stroke-width="2.5"/>
+      <text x="711" y="64" font-size="20" font-weight="600">OOM killer</text>
+      <text x="711" y="92" font-size="16" fill="#56676D">sends SIGKILL to a</text>
+      <text x="711" y="116" font-size="16" fill="#56676D">process in the cgroup</text>
+      <rect x="882" y="20" width="246" height="130" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="1005" y="64" font-size="20" font-weight="600">Container exits</text>
+      <text x="1005" y="92" font-size="16" fill="#56676D">exit code 137</text>
+      <text x="1005" y="116" font-size="16" fill="#56676D">OOMKilled is true</text>
+    </g>
+    <g stroke="#56676D" stroke-width="1.8" marker-end="url(#arr-d1-23)">
+      <line x1="248" y1="85" x2="289" y2="85"/>
+      <line x1="542" y1="85" x2="583" y2="85"/>
+      <line x1="836" y1="85" x2="877" y2="85"/>
+    </g>
+  </svg>
+  <p>The OOM killer chooses only among the processes in the container's cgroup, so the host and other containers keep running. If it kills the main process, the container stops with exit code 137, which is 128 plus 9 for SIGKILL.</p>
+  <aside class="notes">When a container reaches memory.max, the kernel first tries to reclaim memory, for example by dropping file cache. If that fails, the OOM killer picks a process inside that cgroup and sends it SIGKILL, which a process cannot catch or handle. If the victim is the main process, the container exits with 137, and docker inspect shows OOMKilled as true. If the victim is a child process, such as one worker of a multi-process server, the container keeps running with one worker fewer, which is harder to notice. In Lab 01 you start a container with a small memory limit and a program that keeps allocating, then read the result. Kubernetes reports the same event as OOMKilled in the Pod's status. Ask: does exit code 137 always mean out of memory? It does not. docker kill and the stop timeout also give 137, so check OOMKilled. Sources: Kerrisk, cgroups(7); Docker documentation, Resource constraints.</aside>
+</section>
+
+<!-- 24 -->
+<section>
+  <h2>How overlayfs builds a container's filesystem</h2>
+  <svg class="diagram" viewBox="0 0 1128 362" role="img" aria-label="Three read-only image layers sit under a writable container layer, and overlayfs presents the merged view to the process. A file changed for the first time is copied up from a lower layer">
+    <defs><marker id="arr-d1-24" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#56676D"/></marker></defs>
+    <rect x="0" y="0" width="760" height="56" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+    <rect x="0" y="86" width="760" height="56" rx="4" fill="#FFFFFF" stroke="#0B7A75" stroke-width="2.5"/>
+    <rect x="0" y="172" width="760" height="56" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+    <rect x="0" y="238" width="760" height="56" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+    <rect x="0" y="304" width="760" height="56" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+    <g font-size="18" fill="#17262B">
+      <text x="24" y="34" font-weight="600">Merged view</text>
+      <text x="24" y="120" font-weight="600">Container layer (upperdir)</text>
+      <text x="24" y="206">Image layer: COPY . .</text>
+      <text x="24" y="272">Image layer: RUN pip install</text>
+      <text x="24" y="338">Image layer: base image files</text>
+    </g>
+    <g font-size="16" fill="#56676D" text-anchor="end">
+      <text x="736" y="34">what the process sees at /</text>
+      <text x="736" y="120">read-write</text>
+      <text x="736" y="206">read-only</text>
+      <text x="736" y="272">read-only</text>
+      <text x="736" y="338">read-only</text>
+    </g>
+    <g font-size="16" fill="#56676D">
+      <text x="812" y="206">copy-up on the first</text>
+      <text x="812" y="230">write to a file from</text>
+      <text x="812" y="254">a lower layer</text>
+    </g>
+    <path d="M762,332 H790 V114 H767" fill="none" stroke="#56676D" stroke-width="1.8" marker-end="url(#arr-d1-24)"/>
+  </svg>
+  <p>When a process first changes a file from an image layer, overlayfs copies the whole file into the container layer and changes the copy (Docker, n.d.). <code>docker diff</code> lists the files a container has added (A), changed (C) or deleted (D).</p>
+  <aside class="notes">overlayfs is a union filesystem in the Linux kernel since 3.18, and Docker 29 uses it through containerd's overlayfs snapshotter. It stacks read-only lower directories, the image layers, under one writable upper directory and presents the merged result as the container's root. The first write to a file from a lower layer copies the whole file up, which is called copy-on-write. Deleting a lower file creates a whiteout entry in the upper layer that hides it. The image layers never change, so a hundred containers from one image share one copy on disk and in the page cache. The container layer is removed with the container, and copying up large files is slow, so databases write to volumes instead. In Lab 02, docker diff shows the container layer, and you see why docker commit is not a repeatable build. Ask: a container appends one line to a 1 GB file from its image, so how much disk does it use? Source: Docker documentation, Storage drivers and OverlayFS.</aside>
+</section>
+
+<!-- 25 -->
+<section>
+  <h2>Capabilities and seccomp</h2>
+  <div class="cols">
+    <div><h3>Capabilities</h3><ul>
+      <li>Linux splits root's privileges into about 40 capabilities (Kerrisk, n.d., capabilities(7))</li>
+      <li>Docker keeps 14 by default, such as <code>CHOWN</code> and <code>NET_BIND_SERVICE</code></li>
+      <li><code>--cap-drop ALL</code> removes them, and <code>--cap-add</code> adds one back</li>
+    </ul></div>
+    <div><h3>Seccomp</h3><ul>
+      <li>A filter on the system calls a process can make</li>
+      <li>Docker's default profile blocks about 44 of more than 300 system calls (Docker, n.d.)</li>
+      <li>Blocked calls include <code>reboot</code>, <code>bpf</code> and <code>keyctl</code></li>
+    </ul></div>
+  </div>
+  <p>Both restrictions also apply to root inside the container.</p>
+  <aside class="notes">A Unix process used to be either root, with every privilege, or not. Since Linux 2.2 the kernel splits root's power into capabilities. CAP_NET_BIND_SERVICE allows binding to ports below 1024, and CAP_SYS_ADMIN allows mounts and many other operations. Docker starts containers with 14 capabilities, so root in a container has less power than root on the host. Seccomp is a second, independent filter. Docker's default profile blocks system calls that are not namespaced or that are risky, such as keyctl, reboot and loading BPF programs. --privileged turns most of these protections off, so treat it as host access. AWS Fargate restricts capabilities further. You cannot add CAP_SYS_ADMIN or CAP_NET_ADMIN there, and CAP_SYS_PTRACE is the one you can add. On Day 2, Lab 04 runs a container as non-root with capabilities dropped. Ask: which capability does a web server need to listen on port 80? Sources: Kerrisk, capabilities(7); Docker documentation, Seccomp security profiles; Amazon ECS Developer Guide, Fargate security considerations.</aside>
+</section>
+
+<!-- 26 -->
+<section>
+  <h2>Inspecting a container from the host</h2>
+<pre><code># Host PID and full ID of the container named web
+PID=$(docker inspect --format '{{.State.Pid}}' web)
+CID=$(docker inspect --format '{{.Id}}' web)
+ps -o pid,ppid,user,cmd -p "$PID"
+
+# Its namespaces, to compare with /proc/self/ns
+sudo ls -l /proc/$PID/ns
+
+# Its cgroup and its memory limit
+cat /proc/$PID/cgroup
+cat /sys/fs/cgroup/system.slice/docker-$CID.scope/memory.max
+
+# Run the host's ip tool inside its network namespace
+sudo nsenter --target "$PID" --net ip addr</code></pre>
+  <p>The <code>/proc</code> entries and <code>nsenter</code> work the same way for containers that containerd starts on a Kubernetes node.</p>
+  <aside class="notes">Run these on a live container while the class watches, or point to the lab. docker inspect returns the container's full configuration and state, and --format picks one field with a Go template. ps shows the process and its parent, which is the shim. The ns directory lists one link per namespace type. Compare the inode numbers with /proc/self/ns to see which ones differ from the host. /proc/PID/cgroup prints the cgroup path. On Ubuntu 24.04 Docker uses the systemd cgroup driver, so the path is system.slice/docker-ID.scope. nsenter enters one or more namespaces of a target process and runs a host program there. This helps when the image has no shell or tools. lsns and docker top give two more views. Ask: why does ls on /proc/$PID/ns need sudo? The process belongs to root. Sources: Kerrisk, namespaces(7) and cgroups(7); util-linux, nsenter(1).</aside>
+</section>
+
+<!-- 27 -->
+<section>
+  <h2>Reading container exit codes</h2>
+  <table>
+    <tr><th>Code</th><th>Meaning</th><th>Common cause</th></tr>
+    <tr><td>0</td><td>The main process exited successfully</td><td>A one-off task finished</td></tr>
+    <tr><td>1</td><td>The application reported an error</td><td>An unhandled exception</td></tr>
+    <tr><td>125</td><td>Docker could not run the container</td><td>An unknown flag, or a name already in use</td></tr>
+    <tr><td>126</td><td>The command exists but cannot run</td><td>The file is not executable</td></tr>
+    <tr><td>127</td><td>The command was not found</td><td>A typo in CMD, or a missing binary</td></tr>
+    <tr><td>137</td><td>Killed by SIGKILL (128 + 9)</td><td>The OOM killer, docker kill, or the stop timeout</td></tr>
+    <tr><td>143</td><td>Ended by SIGTERM (128 + 15)</td><td>docker stop, when the process exits on the signal</td></tr>
+  </table>
+  <p>Docker returns 125, 126 and 127 itself, and every other code is the exit status of the container's command (Docker, n.d.).</p>
+  <aside class="notes">Exit codes are the first clue when a container stops. docker run reserves 125, 126 and 127 for its own failures, as the Docker reference describes. Codes above 128 follow the shell convention of 128 plus the signal number. 137 is SIGKILL, which is signal 9, and 143 is SIGTERM, which is signal 15. Code 1 is whatever the application chose to mean failure. A container that exits with 0 under the restart policy always is restarted anyway. In Lab 01 you produce several of these codes on purpose and read them with docker ps -a and docker inspect. ECS shows the same code in the stopped task's container details, and Kubernetes shows it as the last state of the container. Ask: a container exits with 137 and OOMKilled is false, so what else could have killed it? Source: Docker documentation, docker run reference, Exit status.</aside>
+</section>
+
+<!-- 28 -->
+<section>
+  <h2>Lab 01: Your lab machine and first containers</h2>
+  <div class="lab-path">labs/01-first-containers.md</div>
+  <ul class="lab-steps">
+    <li>Install Docker Engine 29 from Docker's apt repository</li>
+    <li>Run, stop and remove containers, and publish a port</li>
+    <li>Start Portainer and look at your containers on port 9000</li>
+    <li>Find a container's host PID, namespaces and cgroup limits</li>
+    <li>Cause an OOM kill and read the exit codes</li>
+  </ul>
+  <aside class="notes">Students now work through Lab 01 on their own VMs. Remind them that the lab file is in the labs folder of the course repository. On the first visit, Portainer asks for a setup token, which docker logs portainer prints. Students then create an admin user with a password of at least 12 characters within 5 minutes and choose the local Docker environment. Portainer mounts the Docker socket, which gives it full control of dockerd, and Day 2 comes back to this. The OOM step is meant to fail. The container exits with 137, and docker inspect shows OOMKilled as true. A missing command exits with 127. When the class returns, ask two or three people which exit codes they saw and what caused each one.</aside>
+</section>
+
+<!-- 29 -->
+<section>
+  <h2>How an image is stored</h2>
+  <svg class="diagram" viewBox="0 0 1128 336" role="img" aria-label="An image index points to one manifest per platform. The manifest points to a config and three layers. Every object is named by its SHA-256 digest">
+    <defs><marker id="arr-d1-29" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#56676D"/></marker></defs>
+    <g text-anchor="middle" fill="#17262B">
+      <rect x="0" y="98" width="240" height="140" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="120" y="138" font-size="20" font-weight="600">Image index</text>
+      <text x="120" y="164" font-size="16" fill="#56676D">one manifest</text>
+      <text x="120" y="186" font-size="16" fill="#56676D">per platform</text>
+      <text x="120" y="218" font-size="16" fill="#56676D" font-family="Plex Mono, monospace">sha256:3b7f…</text>
+      <rect x="320" y="98" width="270" height="140" rx="4" fill="#FFFFFF" stroke="#0B7A75" stroke-width="2.5"/>
+      <text x="455" y="138" font-size="20" font-weight="600">Manifest</text>
+      <text x="455" y="164" font-size="16" fill="#56676D">linux/amd64</text>
+      <text x="455" y="186" font-size="16" fill="#56676D">lists config and layers</text>
+      <text x="455" y="218" font-size="16" fill="#56676D" font-family="Plex Mono, monospace">sha256:9c1e…</text>
+    </g>
+    <g fill="#17262B">
+      <rect x="670" y="0" width="458" height="70" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="694" y="30" font-size="20" font-weight="600">Config</text>
+      <text x="694" y="56" font-size="16" fill="#56676D">entrypoint, environment, user, history</text>
+      <rect x="670" y="88" width="458" height="70" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="694" y="118" font-size="20" font-weight="600">Layer</text>
+      <text x="694" y="144" font-size="16" fill="#56676D">base image files</text>
+      <rect x="670" y="176" width="458" height="70" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="694" y="206" font-size="20" font-weight="600">Layer</text>
+      <text x="694" y="232" font-size="16" fill="#56676D">installed dependencies</text>
+      <rect x="670" y="264" width="458" height="70" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="694" y="294" font-size="20" font-weight="600">Layer</text>
+      <text x="694" y="320" font-size="16" fill="#56676D">application code</text>
+    </g>
+    <g font-size="16" fill="#56676D" font-family="Plex Mono, monospace" text-anchor="end">
+      <text x="1104" y="30">sha256:7e2a…</text>
+      <text x="1104" y="118">sha256:a41d…</text>
+      <text x="1104" y="206">sha256:c08b…</text>
+      <text x="1104" y="294">sha256:5d93…</text>
+    </g>
+    <g stroke="#56676D" stroke-width="1.8" marker-end="url(#arr-d1-29)">
+      <line x1="242" y1="168" x2="315" y2="168"/>
+      <line x1="592" y1="140" x2="665" y2="38"/>
+      <line x1="592" y1="160" x2="665" y2="123"/>
+      <line x1="592" y1="180" x2="665" y2="211"/>
+      <line x1="592" y1="200" x2="665" y2="296"/>
+    </g>
+  </svg>
+  <p>Every part is stored and requested by the SHA-256 digest of its content, which is called content-addressable storage (Open Container Initiative, 2024). Images that share a base layer store and download that layer once.</p>
+  <aside class="notes">Walk from left to right. A tag such as python:3.13-slim usually points to an image index, which lists one manifest per platform, for example linux/amd64 and linux/arm64. Docker picks the manifest for your machine. The manifest lists a config and the layers, each by media type, size and digest. The config holds the settings from the Dockerfile, such as the entrypoint, environment, user and working directory, plus the build history. Each layer is a compressed tar archive of file changes. Every object is named by the hash of its content. A host or a registry can therefore check whether it already has a layer before downloading it, and a single changed byte gives a different name. In Lab 02 you inspect a base image's layers with docker image inspect and docker history. Ask: two images are built FROM the same base, so how much disk does the base use? Source: Open Container Initiative (2024), OCI Image Format Specification v1.1.</aside>
+</section>
+
+<!-- 30 -->
+<section>
+  <h2>The main Dockerfile instructions</h2>
+  <table>
+    <tr><th>Instruction</th><th>What it does</th></tr>
+    <tr><td><code>FROM</code></td><td>Sets the base image for this build stage</td></tr>
+    <tr><td><code>WORKDIR</code></td><td>Sets the working directory for later instructions and for the container</td></tr>
+    <tr><td><code>COPY</code></td><td>Copies files from the build context into the image</td></tr>
+    <tr><td><code>RUN</code></td><td>Runs a command during the build and saves the result as a layer</td></tr>
+    <tr><td><code>ENV</code></td><td>Sets an environment variable in the image</td></tr>
+    <tr><td><code>USER</code></td><td>Sets the user that later instructions and the container run as</td></tr>
+    <tr><td><code>EXPOSE</code></td><td>Documents the port the application listens on</td></tr>
+    <tr><td><code>CMD</code>, <code>ENTRYPOINT</code></td><td>Set the command that runs when the container starts</td></tr>
+  </table>
+  <p>Only RUN, COPY and ADD create filesystem layers. The other instructions change the image configuration, and <code>docker history</code> shows them as 0 B steps.</p>
+  <aside class="notes">These eight instructions cover most Dockerfiles, and you use them in Lab 02. FROM starts each stage. WORKDIR creates the directory if it does not exist, which is cleaner than RUN cd. Prefer COPY over ADD. ADD can also fetch URLs and unpack archives, which makes a build harder to predict. Each RUN creates a layer, so join commands that belong together, such as apt-get update and apt-get install, in one RUN. EXPOSE does not publish anything. It records the port for people and for tools. CMD gives a default command that docker run arguments replace. ENTRYPOINT fixes the program, and CMD then supplies its default arguments. Other instructions you will meet are ARG, LABEL, HEALTHCHECK and STOPSIGNAL. Ask: which instruction would you change to move bag-api to a newer Python release? Source: Docker documentation, Dockerfile reference and Building best practices.</aside>
+</section>
+
+<!-- 31 -->
+<section>
+  <h2>How the build cache works</h2>
+<pre><code>FROM public.ecr.aws/docker/library/python:3.13-slim
+WORKDIR /app
+
+# Dependencies change rarely, so they are installed first
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Source code changes often, so it is copied last
+COPY . .
+CMD ["uvicorn", "bagtrack.main:app", "--host", "0.0.0.0", "--port", "8000"]</code></pre>
+  <p>Docker reuses a cached layer while the instruction and the files it copies are unchanged. Once a layer changes, every layer after it is rebuilt, so put the instructions that change least near the top (Docker, n.d.).</p>
+  <aside class="notes">Walk through two edits. If you change a Python file, the cache holds up to the pip install layer, and only the last COPY and the layers after it run again, so the rebuild is fast. If you change requirements.txt, pip install runs again too. If you put COPY . . before pip install, every code change reinstalls all dependencies. For COPY, the cache compares the contents of the copied files. For RUN, it compares only the command text. RUN apt-get update therefore stays cached even after the package index on the internet has changed. Join it with the install command, or build with --no-cache when you need fresh packages. Day 2 adds cache mounts, which keep pip's download cache between builds. Ask: what happens to the cache if you add a comment at the end of bagtrack/main.py? Source: Docker documentation, Docker build cache.</aside>
+</section>
+
+<!-- 32 -->
+<section>
+  <h2>The build context and .dockerignore</h2>
+<pre><code># .dockerignore
+.git
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.env</code></pre>
+  <p><code>docker build</code> sends the build context, the folder you name, to the builder without the paths that <code>.dockerignore</code> lists. Leaving out <code>.git</code>, virtual environments and <code>.env</code> files makes the context smaller and keeps secrets out of the image.</p>
+  <aside class="notes">In docker build -t bag-api:1.0 . the final dot is the build context. Everything in that folder is sent to BuildKit, and COPY can only see files inside it. The .dockerignore file in the root of the context excludes paths before they are sent. Patterns follow the Go filepath.Match rules, ** matches any number of directories, and a line that starts with ! adds an exception. Without the file, COPY . . copies your .git history and your local virtual environment into the image, and any edit there invalidates the cache. A .env file with a real password would end up in a layer. Removing it in a later RUN does not help, because the earlier layer still contains it and anyone with the image can extract it. Ask: a secret is copied in one layer and deleted in the next, so is it in the image? Source: Docker documentation, Build context and .dockerignore files.</aside>
+</section>
+
+<!-- 33 -->
+<section>
+  <h2>Exec form, shell form and PID 1</h2>
+  <div class="cols">
+    <div><h3>Exec form</h3>
+<pre><code>CMD ["uvicorn", "bagtrack.main:app", "--host", "0.0.0.0"]</code></pre>
+      <ul>
+        <li>Docker starts uvicorn with no shell</li>
+        <li>uvicorn is PID 1 and receives the SIGTERM from <code>docker stop</code></li>
+        <li>Works in images without a shell</li>
+      </ul></div>
+    <div><h3>Shell form</h3>
+<pre><code>CMD uvicorn bagtrack.main:app --host 0.0.0.0</code></pre>
+      <ul>
+        <li>Docker wraps the command in <code>/bin/sh -c</code></li>
+        <li>The shell may stay as PID 1 and not pass SIGTERM on (Docker, n.d.)</li>
+        <li>Needs <code>/bin/sh</code> in the image</li>
+      </ul></div>
+  </div>
+  <p>A process running as PID 1 receives SIGTERM only if it installs a handler for it (Kerrisk, n.d., pid_namespaces(7)).</p>
+  <aside class="notes">Both forms set the same command, and they start it differently. The exec form is a JSON array. Docker runs the program itself, so it becomes PID 1 and receives the SIGTERM that docker stop sends. The shell form wraps the command in /bin/sh -c. Docker's documentation warns that the shell then stays as PID 1 and does not pass signals on. The application is killed with SIGKILL after the 10-second timeout and exits with 137. dash, the /bin/sh on Debian-based images, replaces itself with a single simple command, so the problem does not always appear, and you should not rely on that. There is a second issue. The kernel does not apply default signal actions to PID 1, so a plain Python script as PID 1 ignores SIGTERM unless it installs a handler. uvicorn and gunicorn install one. docker run --init adds a small init process that forwards signals. Sources: Docker documentation, Dockerfile reference; Kerrisk, pid_namespaces(7).</aside>
+</section>
+
+<!-- 34 -->
+<section>
+  <h2>Tags and digests</h2>
+  <svg class="diagram" viewBox="0 0 1128 300" role="img" aria-label="The tag bag-api:1.0 points to the manifest of the second build. The digest reference bag-api@sha256:4f1a always points to the manifest of the first build">
+    <defs><marker id="arr-d1-34" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#56676D"/></marker></defs>
+    <g text-anchor="middle" fill="#17262B">
+      <rect x="0" y="20" width="320" height="100" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="160" y="64" font-size="20" font-weight="600" font-family="Plex Mono, monospace">bag-api:1.0</text>
+      <text x="160" y="92" font-size="16" fill="#56676D">tag, moves with each push</text>
+      <rect x="0" y="180" width="320" height="100" rx="4" fill="#FFFFFF" stroke="#0B7A75" stroke-width="2.5"/>
+      <text x="160" y="224" font-size="20" font-weight="600" font-family="Plex Mono, monospace">bag-api@sha256:4f1a…</text>
+      <text x="160" y="252" font-size="16" fill="#56676D">digest, never moves</text>
+      <rect x="640" y="20" width="488" height="100" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="884" y="64" font-size="18" font-family="Plex Mono, monospace">Manifest sha256:9c7e…</text>
+      <text x="884" y="92" font-size="16" fill="#56676D">second build of 1.0, pushed later</text>
+      <rect x="640" y="180" width="488" height="100" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="884" y="224" font-size="18" font-family="Plex Mono, monospace">Manifest sha256:4f1a…</text>
+      <text x="884" y="252" font-size="16" fill="#56676D">first build of 1.0</text>
+      <text x="478" y="58" font-size="16" fill="#56676D">now points to</text>
+      <text x="478" y="218" font-size="16" fill="#56676D">always points to</text>
+    </g>
+    <g stroke="#56676D" stroke-width="1.8" marker-end="url(#arr-d1-34)">
+      <line x1="322" y1="70" x2="635" y2="70"/>
+      <line x1="322" y1="230" x2="635" y2="230"/>
+    </g>
+  </svg>
+  <p>A tag is a name that the next push can move to a different manifest. A digest is the SHA-256 hash of the manifest, so it always refers to the same content (Open Container Initiative, 2024).</p>
+  <aside class="notes">A tag is a pointer in the registry, and pushing a new build with the same tag moves the pointer. latest is only the default tag name and says nothing about age. Two hosts that pull bag-api:1.0 an hour apart can get different images. That causes trouble when an orchestrator starts new tasks or Pods during scaling. A digest names the content itself, so pulling by digest gives the same bytes every time. Amazon ECR can make a repository's tags immutable. A push that reuses a tag then fails with ImageTagAlreadyExistsException. In Lab 02 you push bag-api to the local registry, read its digest and pull it back by digest. Day 2 builds a tagging strategy on this. Ask: if production runs bag-api:1.0, how would you find out which build that is? Sources: Open Container Initiative (2024), Image Format Specification; Amazon ECR User Guide, Image tag mutability.</aside>
+</section>
+
+<!-- 35 -->
+<section>
+  <h2>Consume, extend or build a custom image</h2>
+  <table>
+    <tr><th>Approach</th><th>What you do</th><th>BagTrack example</th></tr>
+    <tr><td>Consume</td><td>Run a published image as it is, configured at run time</td><td>db runs <code>postgres:17</code> with a volume and environment variables</td></tr>
+    <tr><td>Extend</td><td>Start FROM an application image and add your files or settings</td><td>board adds its HTML and JavaScript to an unprivileged nginx image</td></tr>
+    <tr><td>Custom</td><td>Start FROM a language or minimal base and build your own application</td><td>bag-api starts FROM python, and on Day 2 the scanner starts FROM scratch</td></tr>
+  </table>
+  <p>With a custom image you control every layer, and you must also apply base image updates and security patches yourself.</p>
+  <aside class="notes">Most systems use all three approaches. Consuming an image means you trust its publisher for updates and fixes. Prefer Docker Official Images, Verified Publisher images, or images that your platform team approves. You configure a consumed image only through environment variables, mounts and commands, as you do for Postgres in Lab 03. Extending an image keeps the publisher's runtime and adds your content. The board inherits nginx's configuration and its non-root user. A custom image gives you full control over every layer and makes you responsible for all of them. Rebuild custom and extended images when the base image gets security fixes, or they stay vulnerable. Day 2 adds scanning, which tells you when a rebuild is needed. Ask: which approach does your team use for its main service, and who updates the base image? Source: Docker documentation, Docker Official Images and Building best practices.</aside>
+</section>
+
+<!-- 36 -->
+<section>
+  <h2>Pushing and pulling images</h2>
+<pre><code># The registry host is the first part of the name
+docker tag bag-api:1.0 localhost:5000/bag-api:1.0
+
+# Upload the layers the registry lacks, then the manifest
+docker push localhost:5000/bag-api:1.0
+
+# List the tags in a repository (OCI Distribution API)
+curl http://localhost:5000/v2/bag-api/tags/list
+
+# Download the manifest by tag, then any missing layers
+docker pull localhost:5000/bag-api:1.0</code></pre>
+  <p>A name without a registry host, such as <code>python:3.13-slim</code>, refers to Docker Hub. For Amazon ECR you run <code>docker login</code> with a token from the AWS CLI before you push (Amazon Web Services, n.d.).</p>
+  <aside class="notes">docker tag adds a second name to the same image, and nothing is copied. The registry host in the name tells docker push where to send it. Push first checks which layers the registry already has, uploads the rest, and finally uploads the manifest under the tag. That is why a second push of a slightly changed image prints "Layer already exists" for most layers. Pull works the other way. It fetches the manifest for the tag and then downloads only the layers that are missing locally. The curl call uses the OCI Distribution API, which every registry implements. Docker allows plain HTTP for registries on localhost, so the lab registry needs no TLS. For ECR, aws ecr get-login-password produces a token for docker login. In the Harness platform, a connector holds those credentials, and the Build and Push to ECR step uses them. Ask: where does docker pull python:3.13-slim go when you name no registry? Sources: OCI Distribution Specification v1.1; Amazon ECR User Guide, Private registry authentication.</aside>
+</section>
+
+<!-- 37 -->
+<section>
+  <h2>Lab 02: Build images</h2>
+  <div class="lab-path">labs/02-images.md</div>
+  <ul class="lab-steps">
+    <li>Pull and inspect a base image, and see the writable layer with <code>docker diff</code></li>
+    <li>Write the Dockerfile for bag-api, then build and run it</li>
+    <li>Change the code, watch the build cache, and add a <code>.dockerignore</code></li>
+    <li>Run a local registry on port 5000 and push your image to it</li>
+    <li>Pull the image back by its digest</li>
+  </ul>
+  <aside class="notes">Students now write their first Dockerfile. The lab has them look at docker diff and docker commit before they write it, so they see why a commit is not a build. A committed image records the result but not the steps, so nobody can review or repeat it. Suggest that they rebuild after each change and read which steps the build output marks as CACHED. The first bag-api image, built on python:3.13-slim, is 242 MB. Ask students to note that number, because Day 2 starts from it. When the class returns, ask one person to show their Dockerfile and explain the order of its instructions. Ask another person to show the digest of the image they pushed and the command that pulled it back by digest.</aside>
+</section>
+
+<!-- 38 -->
+<section>
+  <h2>Volumes, bind mounts and tmpfs</h2>
+  <svg class="diagram" viewBox="0 0 1128 350" role="img" aria-label="A named volume, a bind mount and a tmpfs mount on the host are mounted at three paths in a container">
+    <defs><marker id="arr-d1-38" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#56676D"/></marker></defs>
+    <text x="0" y="24" font-size="18" font-weight="600" fill="#17262B">On the host</text>
+    <text x="620" y="24" font-size="18" font-weight="600" fill="#17262B">Inside the container</text>
+    <g text-anchor="middle" fill="#17262B">
+      <rect x="0" y="50" width="440" height="84" rx="4" fill="#FFFFFF" stroke="#0B7A75" stroke-width="2.5"/>
+      <text x="220" y="86" font-size="20" font-weight="600">Named volume</text>
+      <text x="220" y="112" font-size="16" fill="#56676D">managed by Docker in /var/lib/docker/volumes</text>
+      <rect x="0" y="152" width="440" height="84" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="220" y="188" font-size="20" font-weight="600">Bind mount</text>
+      <text x="220" y="214" font-size="16" fill="#56676D">a host folder you choose</text>
+      <rect x="0" y="254" width="440" height="84" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="220" y="290" font-size="20" font-weight="600">tmpfs</text>
+      <text x="220" y="316" font-size="16" fill="#56676D">host memory, never written to disk</text>
+    </g>
+    <rect x="620" y="40" width="508" height="308" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+    <g fill="#17262B">
+      <text x="644" y="88" font-size="18" font-family="Plex Mono, monospace">/var/lib/postgresql/data</text>
+      <text x="644" y="114" font-size="16" fill="#56676D">Postgres data, kept after the container is removed</text>
+      <text x="644" y="190" font-size="18" font-family="Plex Mono, monospace">/usr/share/nginx/html</text>
+      <text x="644" y="216" font-size="16" fill="#56676D">the board's files, edits appear at once</text>
+      <text x="644" y="292" font-size="18" font-family="Plex Mono, monospace">/tmp</text>
+      <text x="644" y="318" font-size="16" fill="#56676D">scratch space, removed when it stops</text>
+    </g>
+    <g stroke="#56676D" stroke-width="1.8" marker-end="url(#arr-d1-38)">
+      <line x1="442" y1="92" x2="615" y2="92"/>
+      <line x1="442" y1="194" x2="615" y2="194"/>
+      <line x1="442" y1="296" x2="615" y2="296"/>
+    </g>
+  </svg>
+  <p>Files written to the container's writable layer are deleted with the container. A named volume keeps data that must outlive a container, such as the Postgres data directory in Lab 03 (Docker, n.d.).</p>
+  <aside class="notes">Choose the mount type by asking who manages the data and how long it must last. Docker creates and manages named volumes. They survive docker rm and can be attached to a new container, which is how you upgrade or replace a database container. In Lab 03 the Postgres volume is called bagtrack-db. A bind mount maps a host path you choose into the container. Bind mounts suit development, because an edit on the host appears inside at once. They also tie the container to one host's folder layout and file ownership. A tmpfs mount is held in memory and never written to disk, which suits scratch files. On Fargate you cannot mount a host path. A task gets ephemeral storage, can mount Amazon EFS file systems, or uses a managed database. On Day 3 these become Kubernetes volumes and PersistentVolumeClaims. Ask: where should Postgres keep its data on Fargate? Sources: Docker documentation, Volumes, Bind mounts and tmpfs mounts.</aside>
+</section>
+
+<!-- 39 -->
+<section>
+  <h2>Bridge networks and container DNS</h2>
+  <svg class="diagram" viewBox="0 0 1128 320" role="img" aria-label="On the default bridge network, two containers reach each other by IP address only. On a user-defined network, the embedded DNS server resolves board, bag-api and db by name">
+    <rect x="0" y="10" width="470" height="300" rx="4" fill="#FFFFFF" stroke="#B9C8CA" stroke-width="1.5"/>
+    <rect x="530" y="10" width="598" height="300" rx="4" fill="#FFFFFF" stroke="#B9C8CA" stroke-width="1.5"/>
+    <g fill="#17262B">
+      <text x="24" y="46" font-size="20" font-weight="600">Default bridge network</text>
+      <text x="24" y="72" font-size="16" fill="#56676D" font-family="Plex Mono, monospace">docker0</text>
+      <text x="554" y="46" font-size="20" font-weight="600">User-defined network</text>
+      <text x="554" y="72" font-size="16" fill="#56676D" font-family="Plex Mono, monospace">docker network create lab</text>
+    </g>
+    <g text-anchor="middle" fill="#17262B">
+      <rect x="30" y="100" width="190" height="90" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="125" y="140" font-size="20" font-weight="600">web</text>
+      <text x="125" y="166" font-size="16" fill="#56676D" font-family="Plex Mono, monospace">172.17.0.2</text>
+      <rect x="250" y="100" width="190" height="90" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="345" y="140" font-size="20" font-weight="600">db</text>
+      <text x="345" y="166" font-size="16" fill="#56676D" font-family="Plex Mono, monospace">172.17.0.3</text>
+      <text x="235" y="256" font-size="17" fill="#56676D">reach each other by IP address only</text>
+      <rect x="554" y="100" width="170" height="90" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="639" y="140" font-size="20" font-weight="600">board</text>
+      <text x="639" y="166" font-size="16" fill="#56676D" font-family="Plex Mono, monospace">172.18.0.2</text>
+      <rect x="746" y="100" width="170" height="90" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="831" y="140" font-size="20" font-weight="600">bag-api</text>
+      <text x="831" y="166" font-size="16" fill="#56676D" font-family="Plex Mono, monospace">172.18.0.3</text>
+      <rect x="938" y="100" width="170" height="90" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="1023" y="140" font-size="20" font-weight="600">bagtrack-db</text>
+      <text x="1023" y="166" font-size="16" fill="#56676D" font-family="Plex Mono, monospace">172.18.0.4</text>
+      <rect x="631" y="216" width="400" height="74" rx="4" fill="#FFFFFF" stroke="#0B7A75" stroke-width="2.5"/>
+      <text x="831" y="248" font-size="18" font-weight="600">Embedded DNS server, 127.0.0.11</text>
+      <text x="831" y="274" font-size="16" fill="#56676D">resolves container names to IP addresses</text>
+    </g>
+  </svg>
+  <p>On a user-defined network, Docker's embedded DNS server at 127.0.0.11 resolves container names to their current IP addresses (Docker, n.d.). Containers on the default bridge network can reach each other only by IP address.</p>
+  <aside class="notes">Every Docker host has a default bridge network, docker0, and containers join it unless you name another network. Docker's documentation recommends user-defined networks instead. Containers on one user-defined network can resolve each other by name or network alias. Containers on other networks cannot reach them at all, which gives each application its own scope. In Lab 03 the network is called lab, and bag-api reaches Postgres by the name bagtrack-db. Names matter because IP addresses change whenever a container is recreated. The board's nginx configuration proxies /api/ to the name bag-api, so it keeps working after bag-api is replaced. Compose creates a user-defined network for each project, which is why services can use each other's names. On ECS with awsvpc networking each task gets its own network interface, and the containers in one task talk over localhost. Kubernetes gives each Service a DNS name. Ask: which name should the board use for bag-api once both run in Compose? Source: Docker documentation, Networking overview and Bridge network driver.</aside>
+</section>
+
+<!-- 40 -->
+<section>
+  <h2>Publishing ports</h2>
+  <svg class="diagram" viewBox="0 0 1128 290" role="img" aria-label="The browser connects to port 8080 on the VM, which Docker forwards to port 8080 in the board container. bag-api and db are on the same network and are not published">
+    <defs><marker id="arr-d1-40" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#56676D"/></marker></defs>
+    <rect x="600" y="20" width="528" height="250" rx="4" fill="#FFFFFF" stroke="#B9C8CA" stroke-width="1.5"/>
+    <text x="624" y="56" font-size="18" font-weight="600" fill="#17262B">User-defined network</text>
+    <g text-anchor="middle" fill="#17262B">
+      <rect x="0" y="100" width="200" height="100" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="100" y="142" font-size="20" font-weight="600">Browser</text>
+      <text x="100" y="168" font-size="16" fill="#56676D">on the lab desktop</text>
+      <rect x="250" y="100" width="200" height="100" rx="4" fill="#FFFFFF" stroke="#0B7A75" stroke-width="2.5"/>
+      <text x="350" y="142" font-size="20" font-weight="600">VM port 8080</text>
+      <text x="350" y="168" font-size="16" fill="#56676D">all host addresses</text>
+      <rect x="624" y="100" width="120" height="100" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="684" y="142" font-size="20" font-weight="600">board</text>
+      <text x="684" y="168" font-size="16" fill="#56676D">port 8080</text>
+      <rect x="776" y="100" width="136" height="100" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="844" y="142" font-size="20" font-weight="600">bag-api</text>
+      <text x="844" y="168" font-size="16" fill="#56676D">not published</text>
+      <rect x="944" y="100" width="160" height="100" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="1024" y="142" font-size="20" font-weight="600">bagtrack-db</text>
+      <text x="1024" y="168" font-size="16" fill="#56676D">not published</text>
+      <text x="537" y="138" font-size="16" fill="#56676D" font-family="Plex Mono, monospace">-p 8080:8080</text>
+    </g>
+    <g stroke="#56676D" stroke-width="1.8" marker-end="url(#arr-d1-40)">
+      <line x1="202" y1="150" x2="245" y2="150"/>
+      <line x1="452" y1="150" x2="619" y2="150"/>
+      <line x1="746" y1="150" x2="771" y2="150"/>
+      <line x1="914" y1="150" x2="939" y2="150"/>
+    </g>
+  </svg>
+  <p><code>-p 8080:8080</code> publishes port 8080 on every host address and forwards it to port 8080 in the container (Docker, n.d.). Publish only what users need, and use <code>-p 127.0.0.1:8080:8080</code> to limit a port to the host itself.</p>
+  <aside class="notes">A container's ports are reachable from the host and from containers on the same network. Other machines cannot reach them. -p host:container asks Docker to forward a host port to a container port, and the two numbers can differ, as in -p 8081:8080. Docker's documentation says publishing is insecure by default, because without an address the port opens on every interface of the host. The EXPOSE instruction only documents a port, and -P publishes every exposed port on a random high port. In BagTrack only the board needs to be published. It serves the page and proxies /api/ to bag-api over the network, so bag-api and Postgres stay private. On ECS with awsvpc networking, the load balancer sends traffic to the task's own IP address and container port. Ask: why should Postgres's port stay unpublished? Sources: Docker documentation, Port publishing and mapping; Amazon ECS Developer Guide, task networking.</aside>
+</section>
+
+<!-- 41 -->
+<section>
+  <h2>Restart policies</h2>
+  <table>
+    <tr><th>Policy</th><th>Docker restarts the container</th></tr>
+    <tr><td><code>no</code></td><td>Never. This is the default.</td></tr>
+    <tr><td><code>on-failure[:N]</code></td><td>After it exits with a non-zero code, up to N times</td></tr>
+    <tr><td><code>always</code></td><td>Whenever it stops, and again when the Docker daemon starts</td></tr>
+    <tr><td><code>unless-stopped</code></td><td>Like <code>always</code>, except after you stop it yourself</td></tr>
+  </table>
+  <p>A restart policy reacts only to the main process exiting. If you stop a container by hand, Docker does not restart it until the daemon restarts or you start it again (Docker, n.d.).</p>
+  <aside class="notes">Restart policies are Docker's simplest form of self-healing. They act only on exits. If the process crashes or is killed, Docker starts the same container again, with the same writable layer and configuration. They do not act on a container that is still running but no longer answering, and that is what health checks are for. always and unless-stopped also bring containers back after the VM reboots, because the Docker service starts at boot and starts them again. Use on-failure for jobs that should retry but stop once they succeed. In Lab 03 the main process exits, Docker restarts the container, and docker inspect shows a RestartCount of 1. ECS services and Kubernetes Deployments have their own ways to replace failed containers, which you meet on Days 2 and 3. Ask: which policy suits Postgres on a single server? Source: Docker documentation, Start containers automatically.</aside>
+</section>
+
+<!-- 42 -->
+<section>
+  <h2>Health checks</h2>
+<pre><code># Mark Postgres healthy once it accepts connections
+docker run -d --name db \
+  --health-cmd "pg_isready -h localhost -U postgres" \
+  --health-interval 10s --health-retries 3 \
+  -e POSTGRES_PASSWORD=example \
+  public.ecr.aws/docker/library/postgres:17
+
+# The STATUS column shows (healthy) or (unhealthy)
+docker ps
+
+# In a Dockerfile, the same check becomes part of the image
+HEALTHCHECK --interval=10s --retries=3 \
+  CMD pg_isready -h localhost -U postgres</code></pre>
+  <p>Docker marks a container unhealthy after the set number of failed checks in a row, and it does not restart it. ECS runs only the health check in the task definition and replaces unhealthy tasks in a service (Amazon Web Services, n.d.).</p>
+  <aside class="notes">A process can be running and still be useless, for example a web server whose database connection is gone. A health check runs a command inside the container at each interval. Exit code 0 means healthy and 1 means unhealthy. After the configured number of failures in a row, the status changes to unhealthy. pg_isready is a client tool in the Postgres image that reports whether the server accepts connections. Docker itself only records the status. Compose uses it in Lab 05 to start bag-api after the database is healthy. ECS ignores the HEALTHCHECK in an image and uses the healthCheck in the container definition. For tasks in a service, an unhealthy essential container makes ECS stop and replace the task. Kubernetes uses its own liveness and readiness probes, which call bag-api's /healthz and /readyz on Day 3. In Lab 03, a wrong database password makes /readyz return 503 while /healthz still returns 200. Ask: why would /readyz make a poor liveness check? Sources: Docker documentation, Dockerfile reference; Amazon ECS API Reference, HealthCheck.</aside>
+</section>
+
+<!-- 43 -->
+<section>
+  <h2>A troubleshooting checklist</h2>
+  <table>
+    <tr><th>Command</th><th>What it tells you</th></tr>
+    <tr><td><code>docker ps -a</code></td><td>Whether the container is running, and its exit code</td></tr>
+    <tr><td><code>docker logs --tail 50 web</code></td><td>What the application printed before it failed</td></tr>
+    <tr><td><code>docker inspect web</code></td><td>State, OOMKilled, health, mounts, networks and environment</td></tr>
+    <tr><td><code>docker exec -it web sh</code></td><td>Files, settings and DNS as the container sees them</td></tr>
+    <tr><td><code>docker events</code></td><td>What Docker did and when, such as restarts, kills and health changes</td></tr>
+  </table>
+  <p>Read the status and the logs before you change anything.</p>
+  <aside class="notes">Teach this as a fixed order. docker ps -a shows stopped containers too, with the exit code in the STATUS column. docker logs works on stopped containers, so read the logs before you remove anything. docker inspect answers most configuration questions: the exact command, environment variables, mounts, networks, the restart count, OOMKilled and the last health check results. docker exec starts a second process inside a running container. From there, getent hosts db checks DNS and env shows the variables. Images without a shell need nsenter from the host instead. docker events streams what the daemon does, which helps with containers that restart in a loop. Example from Lab 03: bag-api gets a wrong database password. The container keeps running, /healthz returns 200 and /readyz returns 503. docker logs shows a warning that the database is not reachable, and docker inspect shows the DATABASE_URL the container was given. Ask: a container restarts every few seconds, so which command do you run first? Source: Docker documentation, Docker CLI reference.</aside>
+</section>
+
+<!-- 44 -->
+<section>
+  <h2>Lab 03: Data, networks and health</h2>
+  <div class="lab-path">labs/03-data-and-networks.md</div>
+  <ul class="lab-steps">
+    <li>Run Postgres with a named volume, and show that the data survives a new container</li>
+    <li>Connect bag-api, Postgres and the board on a user-defined network</li>
+    <li>Publish the board's port and bind-mount its files</li>
+    <li>Add restart policies and health checks</li>
+    <li>Work through the troubleshooting drill with logs, inspect, exec and events</li>
+  </ul>
+  <aside class="notes">This is the last lab of Day 1. At the end of it, BagTrack runs as three connected containers on one machine: the board, bag-api and Postgres. The lab names the network lab and the Postgres volume bagtrack-db. The lab uses docker run commands with many flags. Each flag maps to a concept from the last lecture. On Day 2, Compose replaces these commands with one file, and the ECS task definitions describe the same settings again. When the class returns, ask who found the fault in the troubleshooting drill and which command showed it. Then ask what would have happened to the bags in Postgres if the container had no named volume.</aside>
+</section>
+
+<!-- 45 -->
+<section>
+  <h2>References</h2>
+  <ul class="refs">
+    <li>Amazon Web Services. (n.d.). <em>Amazon ECS Developer Guide</em>; <em>Amazon ECS API Reference</em>; <em>Amazon ECR User Guide</em>; <em>Amazon ECR Public User Guide</em>; <em>Amazon EKS User Guide</em>. docs.aws.amazon.com</li>
+    <li>Cloud Native Computing Foundation Technical Oversight Committee. (2018, 2024). <em>CNCF Cloud Native Definition</em> v1.0 and v1.1. github.com/cncf/toc/blob/main/DEFINITION.md</li>
+    <li>Docker. (n.d.). <em>Docker documentation</em>: Dockerfile reference, build cache, storage drivers, volumes, networking, restart policies, resource constraints, seccomp, CLI reference, Docker Hub usage. docs.docker.com</li>
+    <li>Felter, W., Ferreira, A., Rajamony, R., and Rubio, J. (2015). An updated performance comparison of virtual machines and Linux containers. <em>IEEE ISPASS 2015</em>.</li>
+    <li>Kerrisk, M. (n.d.). <em>Linux manual pages</em>: namespaces(7), pid_namespaces(7), cgroups(7), capabilities(7). man7.org</li>
+    <li>Kubernetes. (n.d.). <em>Kubernetes documentation</em>: Container runtimes. kubernetes.io/docs</li>
+    <li>Lewis, J., and Fowler, M. (2014). <em>Microservices</em>. martinfowler.com/articles/microservices.html</li>
+    <li>Merkel, D. (2014). Docker: lightweight Linux containers for consistent development and deployment. <em>Linux Journal</em>, 2014(239).</li>
+    <li>Newman, S. (2021). <em>Building Microservices</em> (2nd ed.). O'Reilly.</li>
+    <li>Open Container Initiative. (2024). <em>OCI Image Format Specification</em> v1.1; <em>OCI Runtime Specification</em> v1.2; <em>OCI Distribution Specification</em> v1.1. github.com/opencontainers</li>
+    <li>Wiggins, A. (2011). <em>The Twelve-Factor App</em>. 12factor.net</li>
+  </ul>
+  <aside class="notes">These are the sources cited today. The Docker, AWS and Kubernetes documentation changes often. The pages cited were current when this deck was written in November 2026. The CNCF definition at the address above is now version 1.1, and version 1.0 from 2018 is in the repository's history. The man7.org manual pages describe the kernel features from the third lecture. Students who want one book on the architecture topics should start with Newman (2021). Students who want the primary sources for containers should read the OCI specifications and the namespaces(7) and cgroups(7) pages.</aside>
+</section>
+
+</div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.2.1/dist/reveal.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.2.1/plugin/notes/notes.js"></script>
+<script>
+Reveal.initialize({
+  width: 1280, height: 720, margin: 0, center: false, hash: true,
+  controls: false, progress: false, transition: 'none', backgroundTransition: 'none',
+  slideNumber: 'c', showSlideNumber: 'all', pdfSeparateFragments: false,
+  plugins: [ RevealNotes ]
+});
+</script>
+</body>
+</html>

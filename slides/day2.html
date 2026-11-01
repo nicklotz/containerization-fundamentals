@@ -1,0 +1,1033 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Containerization Fast Track · Day 2: Docker in depth</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.2.1/dist/reset.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.2.1/dist/reveal.css">
+<link rel="stylesheet" href="theme.css">
+<style>
+/* Day 2: keep inline code and row labels in table cells on one line. */
+.reveal td code, .reveal table td:first-child { white-space: nowrap; }
+</style>
+</head>
+<body>
+<div class="reveal">
+<div class="slides">
+
+<!-- 1 -->
+<section class="title-slide" data-state="title" data-background-color="#0E2A2E">
+  <div class="t-course">Containerization Fast Track</div>
+  <div class="t-main">Day 2: Docker in depth</div>
+  <div class="t-sub">United Airlines · Pluralsight instructor-led training</div>
+  <div class="t-meta">Nick Lotz</div>
+  <aside class="notes">Welcome back. Yesterday you ran containers, wrote the Dockerfile for bag-api, and connected it to Postgres on a user-defined network. Today stays with Docker and goes further. First we make images smaller, then safer. Then we run the whole BagTrack system with Compose and describe the same system as Amazon ECS task definitions, because United's Digital Technology teams run containers mainly on Amazon ECS with AWS Fargate. Last, a pipeline in Harness Open Source lints, tests, builds, scans and publishes the images. There are three labs today, numbered 04, 05 and 06. Ask the class who builds container images at work, and where those builds run. The sources for today are listed on the last slide.</aside>
+</section>
+
+<!-- 2 -->
+<section>
+  <h2>How the Day 1 concepts connect</h2>
+  <svg class="diagram" viewBox="0 0 1128 330" role="img" aria-label="A Dockerfile is built into an image. The image is pushed to and pulled from a registry. docker run creates a container from the image; the container mounts a named volume and joins a user-defined network.">
+    <defs><marker id="arr-d2-02" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#56676D"/></marker></defs>
+    <g text-anchor="middle" fill="#17262B">
+      <rect x="0" y="10" width="280" height="100" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="140" y="54" font-size="20" font-weight="600">Dockerfile</text>
+      <text x="140" y="82" font-size="16" fill="#56676D">build instructions</text>
+      <rect x="424" y="10" width="280" height="100" rx="4" fill="#FFFFFF" stroke="#0B7A75" stroke-width="2.5"/>
+      <text x="564" y="54" font-size="20" font-weight="600">Image</text>
+      <text x="564" y="82" font-size="16" fill="#56676D">read-only layers and a config</text>
+      <rect x="848" y="10" width="280" height="100" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="988" y="54" font-size="20" font-weight="600">Registry</text>
+      <text x="988" y="82" font-size="16" fill="#56676D">stores images by tag and digest</text>
+      <rect x="424" y="200" width="280" height="120" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="564" y="240" font-size="20" font-weight="600">Container</text>
+      <text x="564" y="268" font-size="16" fill="#56676D">a process with namespaces,</text>
+      <text x="564" y="292" font-size="16" fill="#56676D">cgroups and a writable layer</text>
+      <rect x="0" y="210" width="280" height="100" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="140" y="254" font-size="20" font-weight="600">Named volume</text>
+      <text x="140" y="282" font-size="16" fill="#56676D">data that outlives containers</text>
+      <rect x="848" y="210" width="280" height="100" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="988" y="254" font-size="20" font-weight="600">User-defined network</text>
+      <text x="988" y="282" font-size="16" fill="#56676D">DNS by container name</text>
+      <text x="352" y="48" font-size="16" fill="#56676D">docker build</text>
+      <text x="776" y="48" font-size="16" fill="#56676D">push and pull</text>
+      <text x="352" y="250" font-size="16" fill="#56676D">mount</text>
+      <text x="776" y="250" font-size="16" fill="#56676D">attach</text>
+    </g>
+    <text x="578" y="160" font-size="16" fill="#56676D">docker run</text>
+    <g stroke="#56676D" stroke-width="1.8">
+      <line x1="282" y1="60" x2="419" y2="60" marker-end="url(#arr-d2-02)"/>
+      <line x1="709" y1="60" x2="843" y2="60" marker-start="url(#arr-d2-02)" marker-end="url(#arr-d2-02)"/>
+      <line x1="564" y1="112" x2="564" y2="195" marker-end="url(#arr-d2-02)"/>
+      <line x1="282" y1="260" x2="422" y2="260"/>
+      <line x1="706" y1="260" x2="846" y2="260"/>
+    </g>
+  </svg>
+  <p>The commands on the arrows are the ones you ran in Labs 01 to 03.</p>
+  <aside class="notes">This is Day 1 on one slide. Walk it from left to right. A Dockerfile is a list of build instructions. docker build turns it into an image, which is a stack of read-only layers plus a configuration with the entrypoint, environment and user. docker push sends the image to a registry, which stores it by tag and by digest, and docker pull fetches it. docker run creates a container, which is an ordinary Linux process with its own namespaces, cgroup limits and a thin writable layer. A named volume keeps data such as Postgres files after the container is gone. A user-defined network gives containers DNS names, which is how bag-api found Postgres in Lab 03. Ask: which of these boxes disappear with docker rm? (The container and its writable layer. The image, the volume and the network stay.) Today starts at the image box.
+  Source: Docker. (n.d.). Docker documentation. docs.docker.com</aside>
+</section>
+
+<!-- 3 -->
+<section>
+  <h2>Why image size matters</h2>
+  <ul>
+    <li>Fargate pulls the whole image for each new task, because it caches no images (Amazon Web Services, n.d.).</li>
+    <li>Every package in an image can bring vulnerabilities, even when the application never uses it.</li>
+    <li>Shells, package managers and compilers give an attacker tools after a break-in.</li>
+    <li>A smaller image gives a shorter vulnerability report to review.</li>
+    <li>Registries keep every version you push, and each node stores its own copy.</li>
+  </ul>
+  <p>A large image slows scale-out and the replacement of failed tasks.</p>
+  <aside class="notes">Start with start time, because it matters most on ECS with Fargate. AWS documents that every Fargate task runs on its own single-use instance and that images and layers are not cached there. Each task pulls the whole image, and the pull time is part of the start time. When a service scales out at a busy hour, or replaces a failed task, every new task waits for that download. On EC2 container instances and Kubernetes nodes a cached image helps, but only on nodes that pulled it before. The other reasons are security and cost. Every package can bring a CVE, and tools such as a shell or curl help an attacker. Example: on the lab machine, the scanner's final image is 9.5 MB, and its build stage is 1.41 GB. Ask: how big is the largest image your team deploys?
+  Source: Amazon Web Services. (n.d.). Linux containers on Fargate container image pull behavior. Amazon ECS Developer Guide. docs.aws.amazon.com/AmazonECS/latest/developerguide/fargate-pull-behavior.html</aside>
+</section>
+
+<!-- 4 -->
+<section>
+  <h2>How a multi-stage build works</h2>
+  <svg class="diagram" viewBox="0 0 1128 270" role="img" aria-label="The build stage, based on the golang image, holds the Go toolchain, the source code and the compiled binary. COPY --from=build copies only the binary into the final stage, which is based on scratch. On the lab machine the build stage is 1.41 GB and is not pushed; the final image is 9.5 MB and is pushed.">
+    <defs><marker id="arr-d2-04" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#56676D"/></marker></defs>
+    <g text-anchor="middle" fill="#17262B">
+      <rect x="0" y="10" width="440" height="250" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="220" y="50" font-size="20" font-weight="600">build stage</text>
+      <text x="220" y="78" font-size="16" fill="#56676D">FROM golang:1.26</text>
+      <text x="220" y="124" font-size="18">Go compiler and toolchain</text>
+      <text x="220" y="152" font-size="18">scanner source code</text>
+      <text x="220" y="180" font-size="18">compiled /out/scanner</text>
+      <text x="220" y="238" font-size="16" fill="#56676D">1.41 GB on the lab machine</text>
+      <rect x="688" y="10" width="440" height="250" rx="4" fill="#FFFFFF" stroke="#0B7A75" stroke-width="2.5"/>
+      <text x="908" y="50" font-size="20" font-weight="600">final stage</text>
+      <text x="908" y="78" font-size="16" fill="#56676D">FROM scratch</text>
+      <text x="908" y="180" font-size="18">/scanner</text>
+      <text x="908" y="238" font-size="16" fill="#56676D">9.5 MB, pushed to the registry</text>
+      <text x="564" y="160" font-size="16" fill="#56676D">COPY --from=build</text>
+    </g>
+    <line x1="442" y1="174" x2="683" y2="174" stroke="#56676D" stroke-width="1.8" marker-end="url(#arr-d2-04)"/>
+  </svg>
+  <p>Only the final stage becomes the image. The build stage stays in the build cache of the machine that ran the build.</p>
+  <aside class="notes">Multi-stage builds arrived in Docker 17.05 in 2017. Before that, teams used the builder pattern, with one Dockerfile for the compilers, a script that copied the binary out of a container, and a second Dockerfile for the runtime image. Multi-stage builds put both in one file. Each FROM starts a new stage, and COPY --from copies files out of an earlier stage. BuildKit builds only the stages that the final stage needs. Example: the scanner. On the lab machine its build stage is 1.41 GB, because it holds the Go toolchain, the standard library and tools such as git. The final image holds one static binary. It is 9.5 MB, and Trivy finds nothing in it. The build stage is never pushed. Ask: what would the final stage need for a Java service? (A Java runtime, without the JDK and Maven.)
+  Source: Docker. (n.d.). Multi-stage builds. docs.docker.com/build/building/multi-stage/</aside>
+</section>
+
+<!-- 5 -->
+<section>
+  <h2>A multi-stage Dockerfile for the scanner</h2>
+<pre><code>FROM public.ecr.aws/docker/library/golang:1.26 AS build
+WORKDIR /src
+COPY . .
+RUN CGO_ENABLED=0 go build -o /out/scanner .
+
+FROM scratch
+COPY --from=build /out/scanner /scanner
+USER 65532:65532
+ENTRYPOINT ["/scanner"]</code></pre>
+  <p>CGO_ENABLED=0 makes Go produce a static binary, which needs no files from the base image. USER takes numbers here, because scratch has no /etc/passwd to look up a name.</p>
+  <aside class="notes">Read it from top to bottom. The first FROM names its stage build. COPY . . brings in the scanner source, and the .dockerignore file from Day 1 keeps other files out. The go build line turns cgo off, so Go uses its own code instead of calling the C library, and the result is a static binary. The second FROM starts again from scratch, an image with no files at all. COPY --from=build takes one file from the first stage. USER sets a numeric user and group. 65532 is the nonroot user of the distroless images, and any unused number works. There is no shell in this image, so ENTRYPOINT must use the exec form. Ask: what happens if you run docker exec with sh on this container? (It fails, because there is no sh.)
+  Source: Docker. (n.d.). Multi-stage builds. docs.docker.com/build/building/multi-stage/</aside>
+</section>
+
+<!-- 6 -->
+<section>
+  <h2>Base images compared</h2>
+  <table>
+    <tr><th>Image</th><th>What it contains</th><th>Size on the lab machine</th><th>High and critical findings</th></tr>
+    <tr><td><code>python:3.13</code></td><td>Debian with compilers, git and common libraries</td><td>1.62 GB</td><td>478</td></tr>
+    <tr><td><code>python:3.13-slim</code></td><td>Debian with only what Python needs to run</td><td>178 MB</td><td>51</td></tr>
+    <tr><td><code>python:3.13-alpine</code></td><td>Alpine Linux with musl libc and BusyBox</td><td>70.5 MB</td><td>5</td></tr>
+    <tr><td>scanner on <code>scratch</code></td><td>One static binary and nothing else</td><td>9.5 MB</td><td>0</td></tr>
+  </table>
+  <p>Distroless images hold only a language runtime and its libraries, with no shell or package manager (Google, n.d.). The descriptions of the python variants follow Docker's documentation (Docker, n.d.).</p>
+  <aside class="notes">Walk down the table from the largest image to the smallest. The sizes come from docker image ls on the lab machine. The counts are high and critical findings from Trivy, including findings that have no fix yet. The default python tag is built on Debian's buildpack-deps image, so it includes gcc, git and many development headers. That is convenient in a build stage and wasteful at run time. The slim variant keeps only what Python needs to run, which takes the count from 478 to 51. Alpine is smaller again, but it uses musl instead of glibc, which the next slide covers. The scanner on scratch is one static binary, and Trivy finds nothing in it. Distroless images from Google suit languages that need a runtime, such as Python or Java, when no shell is wanted. Lab 04 repeats these measurements. Ask: which base does your team use, and who chose it?
+  Sources: Docker. (n.d.). Docker Official Images: python. hub.docker.com/_/python. Google. (n.d.). Distroless container images. github.com/GoogleContainerTools/distroless</aside>
+</section>
+
+<!-- 7 -->
+<section>
+  <h2>Alpine Linux and musl libc</h2>
+  <ul>
+    <li>Alpine Linux uses musl libc and BusyBox, and its base image is about 5 MB (Docker, n.d.).</li>
+    <li>Most prebuilt Linux software, including manylinux Python wheels, is built against glibc.</li>
+    <li>When a package has no musllinux wheel, pip builds it from source, which needs compilers in the image.</li>
+    <li>Software that relies on glibc behaviour can fail on musl (Docker, n.d.).</li>
+  </ul>
+  <p>For Python services, the slim Debian image avoids these problems.</p>
+  <aside class="notes">Alpine is popular because it is small. On the lab machine, python:3.13-alpine is 70.5 MB and python:3.13-slim is 178 MB. The cost is the C library. musl is a different implementation of the C standard library from glibc, which Debian and Ubuntu use. Binaries linked against glibc do not run on musl. For Python this shows up in wheels. The manylinux wheels on PyPI are built for glibc, so on Alpine pip looks for musllinux wheels, and if a package has none, pip builds it from source. That needs gcc and headers in the image, slows the build and can make the result bigger than slim. Docker's image notes warn that software can run into issues depending on its libc assumptions. Alpine is a good fit for small tools and for software built for musl. Ask: has anyone had a build break after a switch to Alpine?
+  Source: Docker. (n.d.). Docker Official Images: python, image variants. hub.docker.com/_/python</aside>
+</section>
+
+<!-- 8 -->
+<section>
+  <h2>Static and dynamic binaries</h2>
+  <svg class="diagram" viewBox="0 0 1128 280" role="img" aria-label="A dynamically linked binary such as python3.13 needs the ld-linux loader, which loads shared libraries such as libc; the base image must contain all of them. A statically linked binary such as the scanner runs on scratch, an empty filesystem.">
+    <defs><marker id="arr-d2-08" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#56676D"/></marker></defs>
+    <g text-anchor="middle" fill="#17262B">
+      <rect x="0" y="0" width="300" height="100" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="150" y="44" font-size="20" font-weight="600">python3.13</text>
+      <text x="150" y="72" font-size="16" fill="#56676D">dynamically linked</text>
+      <rect x="414" y="0" width="300" height="100" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="564" y="44" font-size="20" font-weight="600">ld-linux loader</text>
+      <text x="564" y="72" font-size="16" fill="#56676D">/lib64/ld-linux-x86-64.so.2</text>
+      <rect x="828" y="0" width="300" height="100" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="978" y="44" font-size="20" font-weight="600">Shared libraries</text>
+      <text x="978" y="72" font-size="16" fill="#56676D">libc.so.6, libssl.so.3, …</text>
+      <text x="357" y="38" font-size="16" fill="#56676D">needs</text>
+      <text x="771" y="38" font-size="16" fill="#56676D">loads</text>
+      <rect x="0" y="170" width="300" height="100" rx="4" fill="#FFFFFF" stroke="#0B7A75" stroke-width="2.5"/>
+      <text x="150" y="214" font-size="20" font-weight="600">scanner</text>
+      <text x="150" y="242" font-size="16" fill="#56676D">statically linked</text>
+      <rect x="414" y="170" width="300" height="100" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="564" y="214" font-size="20" font-weight="600">scratch</text>
+      <text x="564" y="242" font-size="16" fill="#56676D">an empty filesystem is enough</text>
+      <text x="357" y="208" font-size="16" fill="#56676D">runs on</text>
+    </g>
+    <text x="0" y="138" font-size="16" fill="#56676D">The base image must contain the loader and every library the binary needs.</text>
+    <g stroke="#56676D" stroke-width="1.8" marker-end="url(#arr-d2-08)">
+      <line x1="302" y1="50" x2="409" y2="50"/>
+      <line x1="716" y1="50" x2="823" y2="50"/>
+      <line x1="302" y1="220" x2="409" y2="220"/>
+    </g>
+  </svg>
+  <p>The file and ldd commands show how a binary is linked. A static binary that calls HTTPS services also needs CA certificates copied into scratch.</p>
+  <aside class="notes">This slide explains why the scanner can run on scratch and the Python interpreter cannot. A dynamically linked program does not contain the C library. When it starts, the kernel first runs the dynamic loader named in the binary, and the loader finds and maps libc and the other shared libraries. All of those files must exist in the image. A statically linked program has the library code compiled in, so the kernel can run it in an empty filesystem. Show it on the VM. Run file and ldd on /usr/bin/python3, then on the scanner binary. ldd reports that the scanner is not a dynamic executable. scratch also has no CA bundle, no time-zone data and no /etc/passwd, so copy in what the program needs. Ask: does the scanner need CA certificates? (No. It calls bag-api over plain HTTP.)
+  Sources: Kerrisk, M. (n.d.). ld.so(8). Linux manual pages. man7.org. Docker. (n.d.). Multi-stage builds. docs.docker.com</aside>
+</section>
+
+<!-- 9 -->
+<section>
+  <h2>BuildKit cache and secret mounts</h2>
+<pre><code># syntax=docker/dockerfile:1
+FROM public.ecr.aws/docker/library/python:3.13-slim
+WORKDIR /app
+COPY requirements.txt .
+RUN --mount=type=cache,target=/root/.cache/pip \
+    --mount=type=secret,id=pipconf,target=/etc/pip.conf \
+    pip install -r requirements.txt
+COPY bagtrack/ bagtrack/
+
+# Build with: docker build --secret id=pipconf,src=$HOME/.config/pip/pip.conf .</code></pre>
+  <p>The cache mount keeps pip's downloads on the builder between builds. The secret file exists only for the duration of that RUN instruction (Docker, n.d.).</p>
+  <aside class="notes">BuildKit has been Docker's default builder since Engine 23.0. It adds mounts that exist only while one RUN instruction runs. A cache mount keeps a directory, here pip's download cache, on the builder between builds. When requirements.txt changes, the layer cache must rerun the instruction, but pip reuses the packages it downloaded before. A secret mount gives the instruction a file, here a pip.conf that points at a private package index with a token, and removes it afterwards. Neither mount is saved in a layer. Docker's documentation says that build arguments and ENV values persist in the final image, where anyone who pulls it can read them. bag-api has no private packages. This slide shows the pattern for teams that use a private repository such as AWS CodeArtifact. Ask: in a pipeline, where would the token come from?
+  Source: Docker. (n.d.). Build secrets; Optimize cache usage in builds. docs.docker.com/build/</aside>
+</section>
+
+<!-- 10 -->
+<section>
+  <h2>Measuring image size and layers</h2>
+<pre><code># Each image and its size (bag-api:1.0 is 246 MB on the lab machine)
+docker image ls bag-api
+
+# Each layer, with its size and the instruction that created it
+docker image history bag-api:1.0
+
+# The configuration and the layer digests
+docker image inspect bag-api:1.0</code></pre>
+  <p>A file deleted by a later instruction still takes space in the layer that added it. Clean up in the same RUN instruction, for example with <code>rm -rf /var/lib/apt/lists/*</code> after <code>apt-get install</code>.</p>
+  <aside class="notes">These are the commands for Lab 04. docker image ls shows each image and its size. Docker 29 shows a new, more compact view by default. docker image history lists the layers from newest to oldest, with the size each one added and the instruction that created it. On the lab machine, bag-api 1.0 is 246 MB and its slim base is 178 MB, so the history shows where the other 68 MB come from. Look for a large layer from a RUN that installs packages. The common mistake is to install build tools in one RUN and delete them in a later RUN. The later layer only hides the files. The earlier layer still contains them, and every pull still downloads it. Docker's best-practice guide puts apt-get update, install and cleanup in one RUN for this reason. Multi-stage builds avoid the problem altogether. Ask: in the history output, which instruction added the most to bag-api?
+  Source: Docker. (n.d.). Building best practices; docker image history. docs.docker.com</aside>
+</section>
+
+<!-- 11 -->
+<section>
+  <h2>Root in a container is root on the host</h2>
+  <svg class="diagram" viewBox="0 0 1128 324" role="img" aria-label="By default, a process that runs as user ID 0 in a container is user ID 0, root, to the host kernel. With a user namespace, user ID 0 in the container is mapped to user ID 100000 on the host, an unprivileged user.">
+    <defs><marker id="arr-d2-11" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#56676D"/></marker></defs>
+    <text x="0" y="22" font-size="18" font-weight="600" fill="#17262B">Default</text>
+    <text x="608" y="22" font-size="18" font-weight="600" fill="#17262B">With a user namespace</text>
+    <g text-anchor="middle" fill="#17262B">
+      <rect x="0" y="40" width="520" height="96" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="260" y="80" font-size="20" font-weight="600">Process in the container</text>
+      <text x="260" y="108" font-size="16" fill="#56676D">runs as user ID 0, root</text>
+      <rect x="0" y="224" width="520" height="96" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="260" y="264" font-size="20" font-weight="600">Host kernel</text>
+      <text x="260" y="292" font-size="16" fill="#56676D">sees user ID 0, which is root</text>
+      <rect x="608" y="40" width="520" height="96" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="868" y="80" font-size="20" font-weight="600">Process in the container</text>
+      <text x="868" y="108" font-size="16" fill="#56676D">runs as user ID 0 inside its namespace</text>
+      <rect x="608" y="224" width="520" height="96" rx="4" fill="#FFFFFF" stroke="#0B7A75" stroke-width="2.5"/>
+      <text x="868" y="264" font-size="20" font-weight="600">Host kernel</text>
+      <text x="868" y="292" font-size="16" fill="#56676D">sees user ID 100000, an unprivileged user</text>
+    </g>
+    <g font-size="16" fill="#56676D">
+      <text x="274" y="186">same user ID</text>
+      <text x="882" y="186">mapped</text>
+    </g>
+    <g stroke="#56676D" stroke-width="1.8" marker-end="url(#arr-d2-11)">
+      <line x1="260" y1="138" x2="260" y2="219"/>
+      <line x1="868" y1="138" x2="868" y2="219"/>
+    </g>
+  </svg>
+  <p>Capabilities and namespaces limit a root process, but any host file it can reach is open to root (Docker, n.d.). A user namespace maps container user IDs to unprivileged host IDs (Kerrisk, n.d.).</p>
+  <aside class="notes">Containers share the host kernel, and the kernel identifies processes by numeric user ID. Without a user namespace, user 0 in the container is user 0 on the host. Docker reduces the risk. It drops most capabilities, applies seccomp and AppArmor profiles, and uses namespaces to hide the rest of the system. But if the process reaches a host resource, through a bind mount of a host directory, the privileged flag or a kernel bug, it acts as root there. With a user namespace, the kernel maps user 0 inside to an unprivileged ID outside, for example 100000 from the range in /etc/subuid. Check your own images with docker image inspect and the format string for .Config.User. An empty answer means root. Ask: which BagTrack images run as root right now?
+  Sources: Docker. (n.d.). Docker Engine security. docs.docker.com/engine/security/. Kerrisk, M. (n.d.). user_namespaces(7). Linux manual pages. man7.org</aside>
+</section>
+
+<!-- 12 -->
+<section>
+  <h2>Access to the Docker socket is root access to the host</h2>
+<pre><code>$ docker run --rm -it -v /:/host public.ecr.aws/docker/library/alpine chroot /host
+# id -u
+0</code></pre>
+  <p>Docker's documentation warns that the docker group grants root-level privileges (Docker, n.d.). Portainer and Harness Open Source mount this socket on your lab VM, so treat their logins as root logins.</p>
+  <aside class="notes">The Docker daemon runs as root and does whatever its API asks. Anyone who can write to /var/run/docker.sock can ask it to start a container that mounts the host's root directory, then chroot into it. The result is a root shell on the host without a password or sudo. Docker's documentation says that only trusted users should control the daemon, and the post-installation guide warns that the docker group grants root-level privileges. If your user is in the docker group on the lab VM, you already have this power. Two tools in this course mount the socket. Portainer uses it to manage containers, and Harness Open Source uses it to start pipeline step containers. Anyone who can log in to them, or run a pipeline step that reaches the socket, has root on the VM. In Lab 06 the pipeline's build step mounts the socket as well. Ask: which tools in your CI or monitoring stack mount the Docker socket?
+  Source: Docker. (n.d.). Docker Engine security: Docker daemon attack surface; Linux post-installation steps. docs.docker.com</aside>
+</section>
+
+<!-- 13 -->
+<section>
+  <h2>Running the process as a non-root user</h2>
+<pre><code>FROM public.ecr.aws/docker/library/python:3.13-slim
+RUN useradd --system --uid 10001 --no-create-home bagtrack
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY bagtrack/ bagtrack/
+USER 10001
+EXPOSE 8000
+CMD ["uvicorn", "bagtrack.main:app", "--host", "0.0.0.0", "--port", "8000"]</code></pre>
+  <p>COPY makes root the owner of the files, so the app user can read its code but cannot change it. A numeric ID also lets Kubernetes verify that the container does not run as root.</p>
+  <aside class="notes">This is the most useful single change for most images. Create a user in the image, copy the code in as root, then switch with USER. The process starts as that user, so a bug in bag-api gives an attacker an unprivileged account instead of root. Pick a number above the range the base image uses. 10001 is a common choice. The bag-api Dockerfile in Lab 04 follows this pattern and adds a HEALTHCHECK. The CIS Docker Benchmark recommends a dedicated non-root user for containers. If the app must write files, give it one writable directory or a tmpfs, and leave /app owned by root. Ports below 1024 are traditionally privileged, which is one reason the board uses an unprivileged nginx image on port 8080. Ask: what breaks if bag-api from Lab 03 runs as user 10001? (Usually nothing, because it listens on port 8000 and writes no files.)
+  Sources: Center for Internet Security. (n.d.). CIS Docker Benchmark. cisecurity.org. Docker. (n.d.). Dockerfile reference: USER. docs.docker.com</aside>
+</section>
+
+<!-- 14 -->
+<section>
+  <h2>Restricting a container at run time</h2>
+  <table>
+    <tr><th><code>docker run</code> option</th><th>Effect</th></tr>
+    <tr><td><code>--read-only</code></td><td>Mounts the container's root filesystem read-only</td></tr>
+    <tr><td><code>--tmpfs /tmp</code></td><td>Adds a writable directory in memory for temporary files</td></tr>
+    <tr><td><code>--cap-drop ALL</code></td><td>Removes every Linux capability; add back only what the app needs with <code>--cap-add</code></td></tr>
+    <tr><td><code>--security-opt no-new-privileges</code></td><td>Stops setuid programs from raising the process's privileges</td></tr>
+    <tr><td><code>--user 10001</code></td><td>Runs the process as this user, whatever the image sets</td></tr>
+  </table>
+  <p>The CIS Docker Benchmark recommends a read-only root filesystem, restricted capabilities and no-new-privileges (Center for Internet Security, n.d.). Compose and Kubernetes have a matching setting for each option.</p>
+  <aside class="notes">Each option removes one thing an attacker could use. A read-only root filesystem stops anyone from changing the app's code or adding new programs. A tmpfs on /tmp gives the app room for temporary files. Dropping all capabilities removes powers that Docker's default set still grants, such as changing file ownership or opening raw sockets. Most web services need none of them. no-new-privileges sets a kernel flag so that setuid programs such as su cannot raise the process's privileges. --user overrides the image's user, which helps with images you did not build. In Lab 04 you run bag-api with all of these and check that it still answers /healthz. When something breaks, the error usually names the cause, such as Read-only file system. Ask: which of these options would stop the socket attack from two slides ago? (None of them. The socket controls the daemon itself.)
+  Sources: Center for Internet Security. (n.d.). CIS Docker Benchmark. cisecurity.org. Kerrisk, M. (n.d.). capabilities(7). Linux manual pages. man7.org</aside>
+</section>
+
+<!-- 15 -->
+<section>
+  <h2>User namespaces and rootless mode</h2>
+  <table>
+    <tr><th></th><th>Default</th><th>userns-remap</th><th>Rootless mode</th></tr>
+    <tr><td>The daemon runs as</td><td>root</td><td>root</td><td>your user</td></tr>
+    <tr><td>Container root maps to</td><td>root</td><td>an unprivileged ID from <code>/etc/subuid</code></td><td>your user</td></tr>
+    <tr><td>Turned on with</td><td>Nothing</td><td><code>"userns-remap": "default"</code> in <code>daemon.json</code></td><td><code>dockerd-rootless-setuptool.sh install</code></td></tr>
+  </table>
+  <p>Rootless mode also guards the host against vulnerabilities in the daemon and the container runtime (Docker, n.d.).</p>
+  <aside class="notes">Both modes use user namespaces, which map a range of user IDs inside the namespace to a different range outside. With userns-remap, the daemon still runs as root, but each container's root maps to an unprivileged ID from the dockremap entry in /etc/subuid. A process that escapes then has the rights of an unused, unprivileged user. In rootless mode, the daemon itself runs as your user inside a user namespace. Root in a container maps to your own user ID, and other IDs map to your subordinate range. Both modes have limits. userns-remap cannot share the host's PID or network namespace, and rootless mode needs extra setup to bind ports below 1024. Rootless mode suits developer machines and build hosts. Ask: who uses Podman? It runs rootless when an ordinary user starts it.
+  Sources: Docker. (n.d.). Rootless mode; Isolate containers with a user namespace. docs.docker.com/engine/security/. Kerrisk, M. (n.d.). user_namespaces(7). Linux manual pages. man7.org</aside>
+</section>
+
+<!-- 16 -->
+<section>
+  <h2>What a vulnerability scanner reports</h2>
+  <svg class="diagram" viewBox="0 0 1128 170" role="img" aria-label="A scanner reads the image's layers and files, builds a list of operating-system and language packages, compares it with advisory data from Linux distributions, GitHub and NVD, and reports findings with a CVE ID, a severity, and the installed and fixed versions.">
+    <defs><marker id="arr-d2-16" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#56676D"/></marker></defs>
+    <g text-anchor="middle" fill="#17262B">
+      <rect x="0" y="10" width="240" height="150" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="120" y="62" font-size="20" font-weight="600">Image</text>
+      <text x="120" y="92" font-size="16" fill="#56676D">layers and files</text>
+      <text x="120" y="116" font-size="16" fill="#56676D">no container started</text>
+      <rect x="296" y="10" width="240" height="150" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="416" y="62" font-size="20" font-weight="600">Package list</text>
+      <text x="416" y="92" font-size="16" fill="#56676D">dpkg, apk, Python</text>
+      <text x="416" y="116" font-size="16" fill="#56676D">and Go modules</text>
+      <rect x="592" y="10" width="240" height="150" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="712" y="62" font-size="20" font-weight="600">Advisory data</text>
+      <text x="712" y="92" font-size="16" fill="#56676D">Linux distributions,</text>
+      <text x="712" y="116" font-size="16" fill="#56676D">GitHub, NVD</text>
+      <rect x="888" y="10" width="240" height="150" rx="4" fill="#FFFFFF" stroke="#0B7A75" stroke-width="2.5"/>
+      <text x="1008" y="62" font-size="20" font-weight="600">Findings</text>
+      <text x="1008" y="92" font-size="16" fill="#56676D">CVE ID and severity</text>
+      <text x="1008" y="116" font-size="16" fill="#56676D">installed and fixed version</text>
+    </g>
+    <g stroke="#56676D" stroke-width="1.8" marker-end="url(#arr-d2-16)">
+      <line x1="242" y1="85" x2="291" y2="85"/>
+      <line x1="538" y1="85" x2="587" y2="85"/>
+      <line x1="834" y1="85" x2="883" y2="85"/>
+    </g>
+  </svg>
+  <p>A CVE ID names one publicly disclosed vulnerability (CVE Program, n.d.). CVSS rates its severity on a scale from 0.0 to 10.0 (FIRST, 2019).</p>
+  <aside class="notes">A scanner such as Trivy does not run the image. It reads two kinds of files. The first is the package database of the operating system, such as dpkg on Debian or apk on Alpine. The second is the metadata of language packages, such as Python's installed packages or the module list that Go records in each binary. It compares each package version with advisory data from the Linux distributions, the GitHub Advisory Database and the US National Vulnerability Database. Each finding names a CVE, the installed version, the fixed version if one exists, and a severity. The CVE Program has assigned these IDs since 1999. FIRST maintains CVSS, which turns the properties of a vulnerability into a score. Example: the scanner image has no operating-system packages, so Trivy checks only the Go version and modules in the binary. Ask: why can the same image show new findings next month? (The advisory data changes.)
+  Sources: CVE Program. (n.d.). About the CVE Program. cve.org. FIRST. (2019). CVSS v3.1 specification document. first.org/cvss. Aqua Security. (n.d.). Trivy documentation. trivy.dev</aside>
+</section>
+
+<!-- 17 -->
+<section>
+  <h2>Reading severity and fix status</h2>
+  <table>
+    <tr><th>Term</th><th>Meaning</th><th>What to do</th></tr>
+    <tr><td>Severity</td><td>Critical 9.0–10.0, high 7.0–8.9, medium 4.0–6.9, low 0.1–3.9</td><td>Start with critical and high findings</td></tr>
+    <tr><td><code>fixed</code></td><td>A newer package version contains the fix</td><td>Update the package or the base image, then rebuild</td></tr>
+    <tr><td><code>affected</code></td><td>No fix has been released yet</td><td>Remove the package, limit exposure or accept the risk for a set time</td></tr>
+    <tr><td><code>will_not_fix</code></td><td>The distribution does not plan to fix it</td><td>Judge the risk for your use, or change the base image</td></tr>
+  </table>
+  <p>The severity ranges are those of CVSS v3.1 (FIRST, 2019). Trivy's <code>--ignore-unfixed</code> option shows only findings that have a fix (Aqua Security, n.d.).</p>
+  <aside class="notes">Severity describes how bad a vulnerability could be in general. It cannot know how you use the package. A critical bug in a library that bag-api never loads is less urgent than a medium one in its web server. The status tells you whether you can act now. fixed means a newer version exists, so a rebuild on an updated base usually clears it. This is the easiest finding to clear. affected means nobody has released a fix yet. You can remove the package, reduce exposure or accept the risk until a fix exists. will_not_fix means the distribution decided not to fix the issue in that release. Many teams fail the pipeline only on critical findings that have a fix, and review the rest. On the lab machine, Trivy reports 5 high or critical findings with a fix in bag-api 1.0. Ask: what should happen when a fix appears for a finding you accepted?
+  Sources: FIRST. (2019). Common Vulnerability Scoring System v3.1: Specification document. first.org/cvss. Aqua Security. (n.d.). Trivy documentation: Filtering. trivy.dev</aside>
+</section>
+
+<!-- 18 -->
+<section>
+  <h2>Software bills of materials</h2>
+  <ul>
+    <li>An SBOM lists the components of an artifact, with each component's name, version and often its licence.</li>
+    <li>CycloneDX, from OWASP, and SPDX, from the Linux Foundation, are the two common formats (CycloneDX, n.d.; SPDX, n.d.).</li>
+    <li>SPDX is also the international standard ISO/IEC 5962:2021.</li>
+    <li>Trivy writes both formats, for example with <code>trivy image --format cyclonedx bag-api:1.0</code>.</li>
+    <li>When a new CVE appears, a search of stored SBOMs shows which images contain the affected package.</li>
+  </ul>
+  <aside class="notes">An SBOM is an ingredient list for software. The two formats you will meet are CycloneDX, an OWASP project started in 2017, and SPDX, a Linux Foundation project that is also the standard ISO/IEC 5962:2021. Both are JSON or XML files that list packages with names, versions and identifiers such as package URLs. Their value shows on the day a new vulnerability is announced. In December 2021, when Log4Shell was disclosed, many teams spent days finding out which of their images contained Log4j. With an SBOM stored for every image, that question becomes a search. In Lab 04 you generate an SBOM for bag-api with Trivy, and you can look for FastAPI and its version in it. Ask: where would you store SBOMs so that you can search them later?
+  Sources: CycloneDX. (n.d.). cyclonedx.org. SPDX. (n.d.). spdx.dev. Aqua Security. (n.d.). Trivy documentation: SBOM. trivy.dev</aside>
+</section>
+
+<!-- 19 -->
+<section>
+  <h2>Signing and provenance</h2>
+  <svg class="diagram" viewBox="0 0 1128 170" role="img" aria-label="The pipeline builds the image and gets its digest. cosign signs the digest and SLSA provenance records the build. The registry stores the image, the signature and the provenance. The deployment verifies both before it runs the image.">
+    <defs><marker id="arr-d2-19" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#56676D"/></marker></defs>
+    <g text-anchor="middle" fill="#17262B">
+      <rect x="0" y="10" width="240" height="150" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="120" y="62" font-size="20" font-weight="600">Pipeline</text>
+      <text x="120" y="92" font-size="16" fill="#56676D">builds the image</text>
+      <text x="120" y="116" font-size="16" fill="#56676D">digest sha256:9b2e…</text>
+      <rect x="296" y="10" width="240" height="150" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="416" y="62" font-size="20" font-weight="600">Signing</text>
+      <text x="416" y="92" font-size="16" fill="#56676D">cosign signs the digest</text>
+      <text x="416" y="116" font-size="16" fill="#56676D">provenance records</text>
+      <text x="416" y="138" font-size="16" fill="#56676D">the build</text>
+      <rect x="592" y="10" width="240" height="150" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="712" y="62" font-size="20" font-weight="600">Registry</text>
+      <text x="712" y="92" font-size="16" fill="#56676D">stores the image,</text>
+      <text x="712" y="116" font-size="16" fill="#56676D">signature and provenance</text>
+      <rect x="888" y="10" width="240" height="150" rx="4" fill="#FFFFFF" stroke="#0B7A75" stroke-width="2.5"/>
+      <text x="1008" y="62" font-size="20" font-weight="600">Deployment</text>
+      <text x="1008" y="92" font-size="16" fill="#56676D">verifies both before</text>
+      <text x="1008" y="116" font-size="16" fill="#56676D">it runs the image</text>
+    </g>
+    <g stroke="#56676D" stroke-width="1.8" marker-end="url(#arr-d2-19)">
+      <line x1="242" y1="85" x2="291" y2="85"/>
+      <line x1="538" y1="85" x2="587" y2="85"/>
+      <line x1="834" y1="85" x2="883" y2="85"/>
+    </g>
+  </svg>
+  <p>A signature shows who published an image (Sigstore, n.d.). Provenance records who built the image, with which process and from which inputs (SLSA, 2023).</p>
+  <aside class="notes">A scan lists what is inside an image. Signing and provenance record who published it and how it was built. cosign, from the Sigstore project, signs the image digest and stores the signature in the registry next to the image. By default, Sigstore ties the signature to an identity, such as the pipeline's OIDC token, through a short-lived certificate, and records it in a public transparency log. Provenance is a signed statement about the build. It records which builder ran it, from which repository and commit, and with which parameters. SLSA, an OpenSSF project, defines build levels. Level 1 means provenance exists, level 2 adds a hosted build platform that signs it, and level 3 adds a hardened build platform. At deploy time, a policy checks the signature and the provenance and refuses images that fail. The labs do not sign images. Ask: what would stop a laptop-built image from reaching production where you work?
+  Sources: Sigstore. (n.d.). sigstore.dev. SLSA. (2023). Supply-chain Levels for Software Artifacts, v1.0. slsa.dev</aside>
+</section>
+
+<!-- 20 -->
+<section>
+  <h2>Risk areas in NIST SP 800-190</h2>
+  <table>
+    <tr><th>Area</th><th>Example risks</th><th>In this course</th></tr>
+    <tr><td>Images</td><td>Vulnerabilities, embedded secrets, untrusted images</td><td>Scanning, BuildKit secrets, official bases</td></tr>
+    <tr><td>Registries</td><td>Insecure connections, stale images, weak access control</td><td>Tags, digests and the lab registry</td></tr>
+    <tr><td>Orchestrators</td><td>Unbounded administrative access, mixed workload sensitivity</td><td>Day 3</td></tr>
+    <tr><td>Containers</td><td>Runtime vulnerabilities, unbounded network access, insecure settings</td><td>Non-root, read-only, dropped capabilities</td></tr>
+    <tr><td>Host OS</td><td>Shared kernel, large attack surface, improper user access rights</td><td>The Docker socket, rootless mode</td></tr>
+  </table>
+  <p>NIST groups the risks of container technologies into these five areas (Souppaya et al., 2017).</p>
+  <aside class="notes">NIST Special Publication 800-190, the Application Container Security Guide from 2017, is still a standard reference for container risk. It names five areas and lists specific risks in each. Image risks include vulnerabilities, configuration defects, embedded malware, clear-text secrets and untrusted images. Scanning, BuildKit secrets and official bases from ECR Public address them. Registry risks include insecure connections, stale images and weak authentication. The lab registry uses plain HTTP on the VM itself, which is acceptable in a lab. A shared registry needs TLS. Orchestrator risks come on Day 3. Container risks include runtime vulnerabilities, unbounded network access and insecure runtime configuration, which the hardening options address. Host risks include the shared kernel and improper user access rights, such as membership of the docker group. Ask: which area gets the least attention in your team?
+  Source: Souppaya, M., Morello, J., and Scarfone, K. (2017). Application Container Security Guide (NIST SP 800-190). National Institute of Standards and Technology.</aside>
+</section>
+
+<!-- 21 -->
+<section>
+  <h2>Lab 04: Smaller, safer images</h2>
+  <div class="lab-path">labs/04-small-secure-images.md</div>
+  <ul class="lab-steps">
+    <li>Build the scanner in two stages, ending in <code>scratch</code></li>
+    <li>Compare the full, slim and Alpine Python base images</li>
+    <li>Run bag-api as non-root, read-only and with capabilities dropped</li>
+    <li>Scan with Trivy, fix a finding and produce an SBOM</li>
+    <li>Write a Dockerfile for gate-display and grade it with <code>check.sh</code></li>
+  </ul>
+  <aside class="notes">Send everyone to Lab 04. In this lab the bag-api Dockerfile has a single stage, based on python:3.13-slim, with the non-root user 10001 and a HEALTHCHECK. The multi-stage example is the Go scanner. The lab installs Trivy, and the first scan downloads Trivy's vulnerability database before it reports anything. The scanner image has no shell, so docker exec into it fails by design. Say so before someone asks. The last part is the code challenge. Students write a Dockerfile for gate-display, a small Flask app served by gunicorn, and check.sh grades it against the practices from this lecture. Encourage people to try the challenge before they look at the solution. If someone falls behind, scripts/catch-up.sh 04 brings a machine to the start of the lab.
+  Source: course repository, labs/04-small-secure-images.md.</aside>
+</section>
+
+<!-- 22 -->
+<section>
+  <h2>The Compose model</h2>
+  <svg class="diagram" viewBox="0 0 1128 350" role="img" aria-label="On the default network, the board proxies /api/ to bag-api, the scanner sends scans to bag-api, and bag-api queries db. The db service mounts the db-data named volume. The board's port 8080 is published to the host.">
+    <defs><marker id="arr-d2-22" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#56676D"/></marker></defs>
+    <rect x="1" y="1" width="800" height="346" rx="4" fill="none" stroke="#B9C8CA" stroke-width="1.5" stroke-dasharray="6 5"/>
+    <text x="24" y="32" font-size="16" fill="#56676D">Default network, with DNS by service name</text>
+    <g text-anchor="middle" fill="#17262B">
+      <rect x="24" y="56" width="210" height="116" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="129" y="96" font-size="20" font-weight="600">board</text>
+      <text x="129" y="124" font-size="16" fill="#56676D">nginx on port 8080</text>
+      <text x="129" y="148" font-size="16" fill="#56676D">published to the host</text>
+      <rect x="300" y="56" width="210" height="116" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="405" y="96" font-size="20" font-weight="600">bag-api</text>
+      <text x="405" y="124" font-size="16" fill="#56676D">FastAPI on port 8000</text>
+      <rect x="576" y="56" width="200" height="116" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="676" y="96" font-size="20" font-weight="600">db</text>
+      <text x="676" y="124" font-size="16" fill="#56676D">postgres:17</text>
+      <rect x="300" y="226" width="210" height="100" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="405" y="266" font-size="20" font-weight="600">scanner</text>
+      <text x="405" y="294" font-size="16" fill="#56676D">one or more copies</text>
+      <rect x="878" y="56" width="250" height="116" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="1003" y="96" font-size="20" font-weight="600">db-data</text>
+      <text x="1003" y="124" font-size="16" fill="#56676D">named volume</text>
+      <text x="1003" y="148" font-size="16" fill="#56676D">Postgres data files</text>
+      <text x="266" y="102" font-size="16" fill="#56676D">/api/</text>
+      <text x="542" y="102" font-size="16" fill="#56676D">SQL</text>
+    </g>
+    <text x="417" y="206" font-size="16" fill="#56676D">scans</text>
+    <g stroke="#56676D" stroke-width="1.8">
+      <line x1="236" y1="114" x2="295" y2="114" marker-end="url(#arr-d2-22)"/>
+      <line x1="512" y1="114" x2="571" y2="114" marker-end="url(#arr-d2-22)"/>
+      <line x1="405" y1="224" x2="405" y2="177" marker-end="url(#arr-d2-22)"/>
+      <line x1="778" y1="114" x2="876" y2="114"/>
+    </g>
+  </svg>
+  <p>One compose.yaml describes the services, the network and the volume. docker compose up creates them and starts the containers in dependency order (Docker, n.d.).</p>
+  <aside class="notes">Compose describes a multi-container application in one YAML file. It began as Fig, from a company called Orchard, which Docker acquired in 2014. Version 1 was a Python program called docker-compose. Version 2 is a Go plugin of the Docker CLI, run as docker compose, and version 1 stopped receiving updates in 2023. The file format is now an open specification. Each service becomes one or more containers. Compose creates a default network for the project, and each service is reachable by its name, which is why the board's nginx can proxy /api/ to bag-api. With --scale scanner=3, Compose runs three scanner containers, and the name scanner resolves to all three. Ask: what happens to the db-data volume when you run docker compose down? (It stays, unless you add -v.)
+  Source: Docker. (n.d.). Docker Compose documentation. docs.docker.com/compose/</aside>
+</section>
+
+<!-- 23 -->
+<section>
+  <h2>Start order with depends_on and healthchecks</h2>
+<pre><code>services:
+  db:
+    image: public.ecr.aws/docker/library/postgres:17
+    environment: { POSTGRES_USER: bagtrack, POSTGRES_PASSWORD: bagtrack-dev-pw, POSTGRES_DB: bagtrack }
+    volumes: [ "db-data:/var/lib/postgresql/data" ]
+    healthcheck:
+      test: [ "CMD", "pg_isready", "-U", "bagtrack" ]
+  bag-api:
+    build: ./bag-api
+    environment:
+      DATABASE_URL: postgresql://bagtrack:bagtrack-dev-pw@db:5432/bagtrack
+    depends_on:
+      db: { condition: service_healthy }
+volumes: { db-data: {} }</code></pre>
+  <p>Compose starts bag-api only after the db healthcheck passes (Docker, n.d.). Without a condition, depends_on waits only until the db container has started.</p>
+  <aside class="notes">This is a trimmed part of the file you write in Lab 05. The db service uses the official Postgres 17 image from ECR Public. Its user, password and database name are set in the file, and its data is kept in the named volume db-data. The healthcheck runs pg_isready, which succeeds once Postgres accepts connections. bag-api is built from its folder, and its DATABASE_URL uses the host name db, which is the service name. depends_on with the condition service_healthy makes Compose wait for that healthcheck before it starts bag-api. The short form, depends_on with a list, only waits for the db container to start, and Postgres needs more time before it accepts connections. bag-api's /readyz endpoint still matters, because depends_on only affects start-up and the database can fail later. The password is a development value for a lab database with no real data. Ask: what else in BagTrack should wait for bag-api?
+  Source: Docker. (n.d.). Control startup and shutdown order in Compose. docs.docker.com/compose/</aside>
+</section>
+
+<!-- 24 -->
+<section>
+  <h2>Environment, profiles and override files</h2>
+  <table>
+    <tr><th>Feature</th><th>What it does</th></tr>
+    <tr><td><code>environment</code>, <code>env_file</code></td><td>Set variables inside the service's containers</td></tr>
+    <tr><td><code>.env</code></td><td>Fills <code>${VAR}</code> placeholders in compose.yaml</td></tr>
+    <tr><td><code>profiles</code></td><td>Starts a service only when its profile is enabled, for example with <code>--profile debug</code></td></tr>
+    <tr><td><code>compose.override.yaml</code></td><td>Merged on top of compose.yaml automatically</td></tr>
+    <tr><td><code>-f</code></td><td>Merges the files you name, in the order you name them</td></tr>
+  </table>
+  <p>Values in .env reach a container only through environment or env_file (Docker, n.d.).</p>
+  <aside class="notes">These features let one project serve several situations without copies of the file. environment and env_file set variables inside containers. That is how bag-api gets DATABASE_URL, HUB and APP_VERSION. The .env file next to compose.yaml is different. Compose reads it to fill placeholders in the file itself, such as a password that should stay out of Git, and the values reach a container only where the file passes them on. Keep .env out of Git. Profiles mark optional services. A service with the profile debug starts only with --profile debug or the COMPOSE_PROFILES variable. Override files are the main tool for development. docker compose up reads compose.yaml, then compose.override.yaml if it exists, and merges them. With -f you name the files and their order yourself, for example a CI file without bind mounts. Ask: which settings should differ between your laptop and CI?
+  Source: Docker. (n.d.). Compose documentation: environment variables, profiles, merging Compose files. docs.docker.com/compose/</aside>
+</section>
+
+<!-- 25 -->
+<section>
+  <h2>A development override with live reload</h2>
+<pre><code># compose.override.yaml, merged into compose.yaml by docker compose up
+services:
+  bag-api:
+    volumes:
+      - ./bag-api/bagtrack:/app/bagtrack
+    command: [ "uvicorn", "bagtrack.main:app", "--host", "0.0.0.0",
+               "--port", "8000", "--reload" ]
+    environment:
+      APP_VERSION: dev</code></pre>
+  <p>The bind mount puts your working copy of the code in place of the image's copy. uvicorn --reload restarts the app each time a file changes.</p>
+  <aside class="notes">Developers want to edit code and see the result without a rebuild. This override does that for bag-api. The bind mount places the bagtrack package from the working copy over the one in the image. The command adds --reload, which makes uvicorn watch the files and restart the server when one changes. APP_VERSION set to dev appears in /api/info, so you can tell this build from a released one. The production image does not change, because the override applies only where the file exists. Compose also has a watch feature, docker compose watch, which syncs files into the container or rebuilds the image according to rules in a develop section. Example: change an error message in bag-api, save, and call the API again. Ask: why should this override never reach a shared environment? (It runs code from a laptop folder.)
+  Source: Docker. (n.d.). Compose documentation: Use Compose Watch; merging Compose files. docs.docker.com/compose/</aside>
+</section>
+
+<!-- 26 -->
+<section>
+  <h2>Amazon ECS concepts</h2>
+  <svg class="diagram" viewBox="0 0 1128 330" role="img" aria-label="A task definition, bag-api revision 7, lists images, CPU, memory, ports, roles and logs. A service uses it, keeps three tasks running, replaces failed tasks and registers tasks with the load balancer. The tasks run in a cluster with Fargate capacity.">
+    <defs><marker id="arr-d2-26" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#56676D"/></marker></defs>
+    <rect x="760" y="1" width="367" height="326" rx="4" fill="none" stroke="#B9C8CA" stroke-width="1.5" stroke-dasharray="6 5"/>
+    <text x="780" y="30" font-size="16" fill="#56676D">Cluster, with Fargate capacity</text>
+    <g text-anchor="middle" fill="#17262B">
+      <rect x="0" y="60" width="300" height="180" rx="4" fill="#FFFFFF" stroke="#0B7A75" stroke-width="2.5"/>
+      <text x="150" y="104" font-size="20" font-weight="600">Task definition</text>
+      <text x="150" y="134" font-size="16" fill="#56676D">bag-api, revision 7</text>
+      <text x="150" y="160" font-size="16" fill="#56676D">images, CPU, memory,</text>
+      <text x="150" y="184" font-size="16" fill="#56676D">ports, roles and logs</text>
+      <rect x="380" y="60" width="300" height="180" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="530" y="104" font-size="20" font-weight="600">Service</text>
+      <text x="530" y="134" font-size="16" fill="#56676D">keeps 3 tasks running</text>
+      <text x="530" y="160" font-size="16" fill="#56676D">replaces failed tasks</text>
+      <text x="530" y="184" font-size="16" fill="#56676D">registers tasks with the ALB</text>
+      <rect x="784" y="48" width="320" height="80" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="944" y="82" font-size="20" font-weight="600">Task</text>
+      <text x="944" y="108" font-size="16" fill="#56676D">running copy of revision 7</text>
+      <rect x="784" y="140" width="320" height="80" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="944" y="174" font-size="20" font-weight="600">Task</text>
+      <text x="944" y="200" font-size="16" fill="#56676D">running copy of revision 7</text>
+      <rect x="784" y="232" width="320" height="80" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="944" y="266" font-size="20" font-weight="600">Task</text>
+      <text x="944" y="292" font-size="16" fill="#56676D">running copy of revision 7</text>
+      <text x="340" y="138" font-size="16" fill="#56676D">used by</text>
+    </g>
+    <g stroke="#56676D" stroke-width="1.8" marker-end="url(#arr-d2-26)">
+      <line x1="302" y1="150" x2="375" y2="150"/>
+      <line x1="682" y1="150" x2="779" y2="89"/>
+      <line x1="682" y1="150" x2="779" y2="180"/>
+      <line x1="682" y1="150" x2="779" y2="271"/>
+    </g>
+  </svg>
+  <p>A task definition is a versioned JSON description of one or more containers (Amazon Web Services, n.d.). A task is one running copy of a task definition.</p>
+  <aside class="notes">Map ECS onto what you know. A task definition is like a Compose file for one group of containers. It lists images, CPU and memory, ports, environment, secrets, log settings and IAM roles. It is versioned. Each change registers a new revision, such as bag-api:7, and old revisions stay available for rollback. A task is a running copy of a revision, one or more containers that start and stop together, like a Pod in Kubernetes. A service keeps the desired number of tasks running, replaces tasks that stop or fail health checks, rolls out new revisions and registers tasks with a load balancer. A cluster groups the capacity where tasks run. With Fargate, AWS supplies that capacity. United's Digital Technology teams chose ECS with Fargate in 2019 and 2020, when Kubernetes was harder to run, and they also use EKS. Ask: which ECS services does your team own?
+  Source: Amazon Web Services. (n.d.). Amazon ECS Developer Guide: Amazon ECS components. docs.aws.amazon.com/AmazonECS/</aside>
+</section>
+
+<!-- 27 -->
+<section>
+  <h2>Fargate and EC2 launch types</h2>
+  <table>
+    <tr><th></th><th>Fargate</th><th>EC2</th></tr>
+    <tr><td>Servers</td><td>AWS runs them</td><td>You run container instances, usually in an Auto Scaling group</td></tr>
+    <tr><td>Isolation</td><td>Each task runs on its own single-use instance (Amazon Web Services, n.d.)</td><td>Tasks share an instance and its kernel</td></tr>
+    <tr><td>Billing</td><td>The vCPU and memory each task requests</td><td>The instances, busy or idle</td></tr>
+    <tr><td>Network modes</td><td><code>awsvpc</code> only</td><td><code>awsvpc</code>, <code>bridge</code>, <code>host</code> or <code>none</code></td></tr>
+    <tr><td>Image cache</td><td>None; each task pulls its images</td><td>Instances reuse layers they have already pulled</td></tr>
+  </table>
+  <p>Both launch types run the same kind of task definitions and services.</p>
+  <aside class="notes">The launch type decides who runs the servers under your tasks. With EC2, you run container instances, which are ordinary EC2 machines with the ECS agent, usually in an Auto Scaling group. You choose instance types, patch the machine image and pack tasks onto instances, and several tasks share one kernel. With Fargate, AWS supplies a single-use, single-tenant instance for every task, so tasks never share a kernel, and you pay for the CPU and memory each task requests. Fargate requires the awsvpc network mode and task-level CPU and memory values. It has no image cache, which links back to the image-size slide. EC2 still makes sense for GPUs, special instance types or steady, dense workloads. Ask: what do you give up with Fargate? (Host access, daemon settings and privileged containers.)
+  Source: Amazon Web Services. (n.d.). Amazon ECS Developer Guide: launch types; Fargate task definition differences. docs.aws.amazon.com/AmazonECS/</aside>
+</section>
+
+<!-- 28 -->
+<section>
+  <h2>Task networking with awsvpc</h2>
+  <svg class="diagram" viewBox="0 0 1128 320" role="img" aria-label="In a VPC subnet, task 1 has its own network interface with IP 10.0.1.23 and the bag-api-sg security group; its bag-api container and sidecar container share localhost. Task 2 has its own interface with IP 10.0.1.57.">
+    <rect x="1" y="1" width="1126" height="316" rx="4" fill="none" stroke="#B9C8CA" stroke-width="1.5" stroke-dasharray="6 5"/>
+    <text x="24" y="30" font-size="16" fill="#56676D">Subnet 10.0.1.0/24 in your VPC</text>
+    <g text-anchor="middle" fill="#17262B">
+      <rect x="24" y="48" width="600" height="250" rx="4" fill="none" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="324" y="84" font-size="20" font-weight="600">Task 1</text>
+      <text x="324" y="110" font-size="16" fill="#56676D">ENI 10.0.1.23, security group bag-api-sg</text>
+      <rect x="48" y="134" width="270" height="140" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="183" y="196" font-size="18" font-weight="600">bag-api container</text>
+      <text x="183" y="222" font-size="16" fill="#56676D">listens on port 8000</text>
+      <rect x="330" y="134" width="270" height="140" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="465" y="196" font-size="18" font-weight="600">sidecar container</text>
+      <text x="465" y="222" font-size="16" fill="#56676D">calls localhost:8000</text>
+      <rect x="656" y="48" width="448" height="250" rx="4" fill="none" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="880" y="84" font-size="20" font-weight="600">Task 2</text>
+      <text x="880" y="110" font-size="16" fill="#56676D">ENI 10.0.1.57, security group bag-api-sg</text>
+      <rect x="680" y="134" width="400" height="140" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="880" y="196" font-size="18" font-weight="600">bag-api container</text>
+      <text x="880" y="222" font-size="16" fill="#56676D">listens on port 8000</text>
+    </g>
+  </svg>
+  <p>With awsvpc, each task gets its own elastic network interface and private IP address (Amazon Web Services, n.d.). Containers in one task share that interface and reach each other on localhost.</p>
+  <aside class="notes">awsvpc is the network mode that Fargate requires. ECS creates an elastic network interface for each task in a subnet you choose, and the task gets a private IP address from that subnet, as an EC2 instance would. Security groups attach to that interface, so rules can differ per service. For example, only the load balancer may reach bag-api on port 8000, and only bag-api may reach the database. Inside a task, the containers share one network namespace, so a sidecar such as a log router reaches the app on localhost. In Compose, each container has its own address on a Docker bridge network, and containers find each other by DNS name. Between ECS services, you use a load balancer, Service Connect or Cloud Map instead. Each task uses one address, so subnets must be large enough for scale-out. Ask: who manages subnets and security groups in your teams?
+  Source: Amazon Web Services. (n.d.). Amazon ECS Developer Guide: task networking for Fargate. docs.aws.amazon.com/AmazonECS/</aside>
+</section>
+
+<!-- 29 -->
+<section>
+  <h2>Task execution role and task role</h2>
+  <svg class="diagram" viewBox="0 0 1128 300" role="img" aria-label="The task execution role is used by ECS and Fargate to start the task: to pull the image from Amazon ECR, read secrets from Secrets Manager or SSM, and write logs to CloudWatch Logs. The task role is used by the code in your containers to call AWS APIs, for example Amazon S3.">
+    <defs><marker id="arr-d2-29" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#56676D"/></marker></defs>
+    <g text-anchor="middle" fill="#17262B">
+      <rect x="0" y="0" width="540" height="100" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="270" y="42" font-size="20" font-weight="600">Task execution role</text>
+      <text x="270" y="72" font-size="16" fill="#56676D">used by ECS and Fargate to start the task</text>
+      <rect x="0" y="190" width="172" height="110" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="86" y="232" font-size="18" font-weight="600">Pull the image</text>
+      <text x="86" y="258" font-size="16" fill="#56676D">from Amazon ECR</text>
+      <rect x="184" y="190" width="172" height="110" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="270" y="232" font-size="18" font-weight="600">Read secrets</text>
+      <text x="270" y="258" font-size="16" fill="#56676D">Secrets Manager</text>
+      <text x="270" y="280" font-size="16" fill="#56676D">or SSM</text>
+      <rect x="368" y="190" width="172" height="110" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="454" y="232" font-size="18" font-weight="600">Write logs</text>
+      <text x="454" y="258" font-size="16" fill="#56676D">to CloudWatch Logs</text>
+      <rect x="588" y="0" width="540" height="100" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="858" y="42" font-size="20" font-weight="600">Task role</text>
+      <text x="858" y="72" font-size="16" fill="#56676D">used by the code in your containers</text>
+      <rect x="718" y="190" width="280" height="110" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="858" y="232" font-size="18" font-weight="600">Call AWS APIs</text>
+      <text x="858" y="258" font-size="16" fill="#56676D">for example Amazon S3</text>
+    </g>
+    <g stroke="#56676D" stroke-width="1.8" marker-end="url(#arr-d2-29)">
+      <line x1="86" y1="102" x2="86" y2="185"/>
+      <line x1="270" y1="102" x2="270" y2="185"/>
+      <line x1="454" y1="102" x2="454" y2="185"/>
+      <line x1="858" y1="102" x2="858" y2="185"/>
+    </g>
+  </svg>
+  <p>Containers receive credentials for the task role only (Amazon Web Services, n.d.). The execution role's permissions stay with ECS and Fargate.</p>
+  <aside class="notes">Two IAM roles confuse almost everyone at first. The task execution role is used by the ECS agent and Fargate around your code. It pulls the image from ECR, fetches secret values from Secrets Manager or SSM Parameter Store, and sends container logs to CloudWatch Logs. The task role is what your application code uses. The AWS SDK inside the container picks up its temporary credentials automatically. If bag-api needed to write a report to S3, that permission would go in the task role. The permission to read the database secret goes in the execution role, because ECS reads the secret and injects it at start. A task that fails to start with an image pull error points to the execution role, or to the network path to ECR. Ask: which role needs permission to send messages to an SQS queue? (The task role.)
+  Source: Amazon Web Services. (n.d.). Amazon ECS Developer Guide: task execution IAM role; task IAM role. docs.aws.amazon.com/AmazonECS/</aside>
+</section>
+
+<!-- 30 -->
+<section>
+  <h2>Secrets and logs in a task definition</h2>
+<pre><code>"containerDefinitions": [{
+  "name": "bag-api",
+  "image": "111122223333.dkr.ecr.us-east-1.amazonaws.com/bag-api:1.0.42",
+  "portMappings": [{ "containerPort": 8000 }],
+  "secrets": [{
+    "name": "DATABASE_URL",
+    "valueFrom": "arn:aws:secretsmanager:us-east-1:111122223333:secret:bagtrack-db-a1B2c3"
+  }],
+  "logConfiguration": {
+    "logDriver": "awslogs",
+    "options": { "awslogs-group": "/ecs/bag-api", "awslogs-region": "us-east-1",
+                 "awslogs-stream-prefix": "bag-api" }
+  }
+}]</code></pre>
+  <p>ECS reads the secret with the execution role and sets it as an environment variable when the container starts (Amazon Web Services, n.d.). The awslogs driver sends the container's stdout and stderr to CloudWatch Logs.</p>
+  <aside class="notes">This is the container part of a Fargate task definition for bag-api. The image comes from a private ECR repository. 111122223333 is the example account ID that AWS documentation uses. portMappings lists the port the container listens on. With awsvpc there is no separate host port. The secrets block asks ECS to read a Secrets Manager secret and set it as the DATABASE_URL variable. The value never appears in the task definition, so the JSON file can be kept in Git. SSM Parameter Store works the same way with a parameter ARN. logConfiguration uses the awslogs driver, which sends everything the app prints to stdout and stderr to a CloudWatch Logs group. In Lab 05 you write this file for bag-api and the scanner. Ask: what happens to running tasks if someone changes the secret's value? (Nothing until new tasks start, because ECS reads secrets at start.)
+  Source: Amazon Web Services. (n.d.). Amazon ECS Developer Guide: pass Secrets Manager secrets through environment variables; the awslogs log driver. docs.aws.amazon.com/AmazonECS/</aside>
+</section>
+
+<!-- 31 -->
+<section>
+  <h2>A service behind an Application Load Balancer</h2>
+  <svg class="diagram" viewBox="0 0 1128 320" role="img" aria-label="The Application Load Balancer forwards requests to a target group with target type ip and a health check on /healthz. The target group sends traffic to three tasks at their own IP addresses on port 8000.">
+    <defs><marker id="arr-d2-31" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#56676D"/></marker></defs>
+    <g text-anchor="middle" fill="#17262B">
+      <rect x="0" y="110" width="250" height="100" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="125" y="152" font-size="20" font-weight="600">Load balancer</text>
+      <text x="125" y="180" font-size="16" fill="#56676D">ALB, HTTPS listener</text>
+      <rect x="330" y="100" width="290" height="120" rx="4" fill="#FFFFFF" stroke="#0B7A75" stroke-width="2.5"/>
+      <text x="475" y="142" font-size="20" font-weight="600">Target group</text>
+      <text x="475" y="170" font-size="16" fill="#56676D">target type ip</text>
+      <text x="475" y="194" font-size="16" fill="#56676D">health check /healthz</text>
+      <rect x="738" y="10" width="390" height="80" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="933" y="44" font-size="20" font-weight="600">Task</text>
+      <text x="933" y="70" font-size="16" fill="#56676D">10.0.1.23:8000</text>
+      <rect x="738" y="120" width="390" height="80" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="933" y="154" font-size="20" font-weight="600">Task</text>
+      <text x="933" y="180" font-size="16" fill="#56676D">10.0.2.41:8000</text>
+      <rect x="738" y="230" width="390" height="80" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="933" y="264" font-size="20" font-weight="600">Task</text>
+      <text x="933" y="290" font-size="16" fill="#56676D">10.0.3.12:8000</text>
+    </g>
+    <g stroke="#56676D" stroke-width="1.8" marker-end="url(#arr-d2-31)">
+      <line x1="252" y1="160" x2="325" y2="160"/>
+      <line x1="622" y1="160" x2="733" y2="51"/>
+      <line x1="622" y1="160" x2="733" y2="160"/>
+      <line x1="622" y1="160" x2="733" y2="269"/>
+    </g>
+  </svg>
+  <p>With awsvpc, the target type must be ip, because each task has its own address (Amazon Web Services, n.d.). The service registers new tasks and replaces tasks that fail the health check.</p>
+  <aside class="notes">This is how traffic reaches an ECS service. An Application Load Balancer has a listener, for example HTTPS on port 443, with rules that forward requests to a target group. The ECS service owns the registration. When it starts a task, it registers the task's IP address and port in the target group. When it stops a task, it deregisters it and lets open connections drain. The target type must be ip with awsvpc. The load balancer health-checks every target, and the service replaces tasks that stay unhealthy. Choose the health check path with care. bag-api's /readyz checks Postgres. If the load balancer used it, a database outage would mark every task unhealthy, and ECS would keep replacing containers that work. /healthz checks only the process. Ask: where do you see the same idea on Day 3? (A Kubernetes Service and its EndpointSlices.)
+  Source: Amazon Web Services. (n.d.). Amazon ECS Developer Guide: use load balancing to distribute Amazon ECS service traffic. docs.aws.amazon.com/AmazonECS/</aside>
+</section>
+
+<!-- 32 -->
+<section>
+  <h2>Compose attributes and task-definition fields</h2>
+  <table>
+    <tr><th><code>compose.yaml</code></th><th>ECS task definition</th></tr>
+    <tr><td><code>image</code></td><td><code>image</code></td></tr>
+    <tr><td><code>ports</code></td><td><code>portMappings</code></td></tr>
+    <tr><td><code>environment</code></td><td><code>environment</code></td></tr>
+    <tr><td>Secret values</td><td><code>secrets</code>, each with a <code>valueFrom</code> ARN</td></tr>
+    <tr><td><code>healthcheck</code></td><td><code>healthCheck</code></td></tr>
+    <tr><td><code>depends_on</code> with a condition</td><td><code>dependsOn</code>, for containers in the same task only</td></tr>
+    <tr><td><code>deploy.resources.limits</code></td><td>Task-level <code>cpu</code> and <code>memory</code></td></tr>
+    <tr><td><code>--scale scanner=3</code></td><td>The service's <code>desiredCount</code></td></tr>
+  </table>
+  <p>Named volumes and Compose networks have no matching field. Fargate tasks use Amazon EFS for shared files and the VPC for networking.</p>
+  <aside class="notes">This table is the second half of Lab 05. Most Compose attributes have a close match in a container definition. ports becomes portMappings, without a host port on awsvpc. environment stays environment, but secret values move to secrets, with a reference to Secrets Manager or SSM. healthcheck becomes healthCheck with the same command, interval, timeout and retries. depends_on needs care. In ECS, dependsOn only orders containers inside one task, such as a sidecar. Separate services do not wait for each other, so bag-api must retry its database connection. deploy.resources.limits becomes task CPU and memory, and Fargate accepts only certain combinations. The replica count belongs to the service. On AWS, a managed database such as Amazon RDS for PostgreSQL is a common alternative to a database container. Ask: what in BagTrack's compose file has no ECS equivalent?
+  Sources: Amazon Web Services. (n.d.). Amazon ECS Developer Guide: task definition parameters. docs.aws.amazon.com/AmazonECS/. Docker. (n.d.). Compose file reference. docs.docker.com/compose/</aside>
+</section>
+
+<!-- 33 -->
+<section>
+  <h2>Lab 05: Compose, then ECS</h2>
+  <div class="lab-path">labs/05-compose-and-ecs.md</div>
+  <ul class="lab-steps">
+    <li>Describe all of BagTrack in <code>compose.yaml</code>, with healthchecks and a volume</li>
+    <li>Add a development override with live reload</li>
+    <li>Scale the scanner and watch the board</li>
+    <li>Write ECS task definitions for bag-api and the scanner</li>
+    <li>Map each Compose attribute to its task-definition field</li>
+  </ul>
+  <aside class="notes">Send everyone to Lab 05. The first part brings the whole system up with one command and shows the board in the browser. Point out the board's footer, which shows which bag-api instance answered. The second part has no AWS account behind it. Students write the task definitions as JSON files, and nothing is deployed. Ask everyone to note each Compose attribute that has no ECS field, because we compare notes afterwards. If someone falls behind, scripts/catch-up.sh 05 brings a machine to the start of the lab.
+  Source: course repository, labs/05-compose-and-ecs.md.</aside>
+</section>
+
+<!-- 34 -->
+<section>
+  <h2>Why build images in a CI pipeline</h2>
+  <ul>
+    <li>Every build starts from a clean checkout in the same environment, so results repeat.</li>
+    <li>Dockerfile changes go through pull requests and review like any other code.</li>
+    <li>Every image is linted, tested and scanned before anyone can deploy it.</li>
+    <li>Each image tag leads back to the commit and the pipeline run that built it.</li>
+    <li>Registry credentials stay in the CI system instead of on laptops.</li>
+  </ul>
+  <p>Build each image once and deploy that same image to every environment (Humble and Farley, 2010).</p>
+  <aside class="notes">Why not build on a laptop and push? A laptop build depends on what is on that laptop, such as cached layers, local files, a different Docker version or uncommitted changes. A pipeline starts from a clean checkout of one commit, so two runs of the same commit give the same result. It makes review possible, because a Dockerfile change is a pull request like any other change. It makes the checks unavoidable, because lint, tests and the scan run every time. It also keeps the registry password in one place. Humble and Farley's Continuous Delivery, from 2010, adds the principle behind promotion. You build your binaries once and deploy the same artifact to every environment. At United, deployments run in the Harness platform and images are stored in Amazon ECR. Ask: where are the images for your team's services built today?
+  Source: Humble, J., and Farley, D. (2010). Continuous Delivery. Addison-Wesley.</aside>
+</section>
+
+<!-- 35 -->
+<section>
+  <h2>Pipeline stages for an image</h2>
+  <svg class="diagram" viewBox="0 0 1128 150" role="img" aria-label="Five stages in order: lint with hadolint, test with pytest and go test in language containers, build three images with docker build, scan with Trivy and fail on critical findings, push to the registry with build-number tags.">
+    <defs><marker id="arr-d2-35" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#56676D"/></marker></defs>
+    <g text-anchor="middle" fill="#17262B">
+      <rect x="0" y="10" width="196" height="130" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="98" y="60" font-size="20" font-weight="600">Lint</text>
+      <text x="98" y="90" font-size="16" fill="#56676D">hadolint</text>
+      <text x="98" y="114" font-size="16" fill="#56676D">Dockerfile rules</text>
+      <rect x="233" y="10" width="196" height="130" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="331" y="60" font-size="20" font-weight="600">Test</text>
+      <text x="331" y="90" font-size="16" fill="#56676D">pytest, go test</text>
+      <text x="331" y="114" font-size="16" fill="#56676D">in language containers</text>
+      <rect x="466" y="10" width="196" height="130" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="564" y="60" font-size="20" font-weight="600">Build</text>
+      <text x="564" y="90" font-size="16" fill="#56676D">docker build</text>
+      <text x="564" y="114" font-size="16" fill="#56676D">three images</text>
+      <rect x="699" y="10" width="196" height="130" rx="4" fill="#FFFFFF" stroke="#0B7A75" stroke-width="2.5"/>
+      <text x="797" y="60" font-size="20" font-weight="600">Scan</text>
+      <text x="797" y="90" font-size="16" fill="#56676D">Trivy</text>
+      <text x="797" y="114" font-size="16" fill="#56676D">fail on critical</text>
+      <rect x="932" y="10" width="196" height="130" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="1030" y="60" font-size="20" font-weight="600">Push</text>
+      <text x="1030" y="90" font-size="16" fill="#56676D">to the registry</text>
+      <text x="1030" y="114" font-size="16" fill="#56676D">build-number tags</text>
+    </g>
+    <g stroke="#56676D" stroke-width="1.8" marker-end="url(#arr-d2-35)">
+      <line x1="198" y1="75" x2="228" y2="75"/>
+      <line x1="431" y1="75" x2="461" y2="75"/>
+      <line x1="664" y1="75" x2="694" y2="75"/>
+      <line x1="897" y1="75" x2="927" y2="75"/>
+    </g>
+  </svg>
+  <p>A failed stage stops the run, so later stages never start. The cheapest checks run first.</p>
+  <aside class="notes">This is the order the Lab 06 pipeline follows. Lint comes first because it is the cheapest check. hadolint parses the Dockerfile, applies rules such as pinning base image versions and not ending as root, and runs ShellCheck on RUN commands. Tests come next, with pytest for bag-api and go test for the scanner, each in its own language container. Then the image is built and scanned with Trivy, and the run fails on critical findings. Push comes last, so an image that fails the scan never reaches the registry. Lab 06 uses separate build, scan and publish steps in this order. Its first run stops at the scan of the board image, because the board's base image has critical vulnerabilities that already have fixes. Ask: which steps would you run on every pull request, and which only on the main branch?
+  Sources: hadolint. (n.d.). Haskell Dockerfile Linter. github.com/hadolint/hadolint. Harness. (n.d.). Harness Open Source documentation. developer.harness.io</aside>
+</section>
+
+<!-- 36 -->
+<section>
+  <h2>Tagging images</h2>
+  <table>
+    <tr><th>Tag</th><th>Example</th><th>What it tells you</th></tr>
+    <tr><td>Commit SHA</td><td><code>bag-api:3f9c2e1</code></td><td>The source commit</td></tr>
+    <tr><td>Version and build number</td><td><code>bag-api:1.0.42</code></td><td>Run 42 of the pipeline, from <code>1.0.${{ build.number }}</code></td></tr>
+    <tr><td><code>latest</code></td><td><code>bag-api:latest</code></td><td>Whatever was pushed last; it moves with every push</td></tr>
+  </table>
+  <p>Treat every tag except latest as immutable. Amazon ECR can enforce this with tag immutability on a repository (Amazon Web Services, n.d.).</p>
+  <aside class="notes">A tag is a name that can move. A digest is a hash of the content. Tags are for people and tools. The working rule is that a tag never moves once it is pushed, except latest, which moves by design and should not be used for deployments. Lab 06 tags each image with version 1.0 and the run number, so run 42 produces bag-api:1.0.42. A commit SHA can be added as a second tag to trace an image to its source. All tags of one build point to the same digest. In Harness Open Source the expressions are ${{ build.number }} and ${{ build.commit }}. Amazon ECR has a repository setting, tag immutability, that rejects a push which would move an existing tag. Ask: if production runs bag-api:latest and a rollout fails, which version do you roll back to?
+  Sources: Amazon Web Services. (n.d.). Amazon ECR User Guide: image tag mutability. docs.aws.amazon.com/AmazonECR/. Harness. (n.d.). Harness Open Source documentation: expression variables. developer.harness.io</aside>
+</section>
+
+<!-- 37 -->
+<section>
+  <h2>Promoting one digest through environments</h2>
+  <svg class="diagram" viewBox="0 0 1128 310" role="img" aria-label="Pipeline run 42 builds the image once. The image digest sha256:9b2e, with the tags 1.0.42 and 3f9c2e1, is deployed to development for every build, to test after development checks, and to production after approval.">
+    <defs><marker id="arr-d2-37" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#56676D"/></marker></defs>
+    <g text-anchor="middle" fill="#17262B">
+      <rect x="0" y="105" width="240" height="100" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="120" y="148" font-size="20" font-weight="600">Pipeline run 42</text>
+      <text x="120" y="176" font-size="16" fill="#56676D">builds the image once</text>
+      <rect x="300" y="95" width="320" height="120" rx="4" fill="#FFFFFF" stroke="#0B7A75" stroke-width="2.5"/>
+      <text x="460" y="137" font-size="20" font-weight="600">Image digest</text>
+      <text x="460" y="163" font-size="16" fill="#56676D">sha256:9b2e…</text>
+      <text x="460" y="189" font-size="16" fill="#56676D">tags 1.0.42 and 3f9c2e1</text>
+      <rect x="738" y="10" width="390" height="80" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="933" y="44" font-size="20" font-weight="600">Development</text>
+      <text x="933" y="70" font-size="16" fill="#56676D">every build</text>
+      <rect x="738" y="115" width="390" height="80" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="933" y="149" font-size="20" font-weight="600">Test</text>
+      <text x="933" y="175" font-size="16" fill="#56676D">after development checks</text>
+      <rect x="738" y="220" width="390" height="80" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="933" y="254" font-size="20" font-weight="600">Production</text>
+      <text x="933" y="280" font-size="16" fill="#56676D">after approval</text>
+    </g>
+    <g stroke="#56676D" stroke-width="1.8" marker-end="url(#arr-d2-37)">
+      <line x1="242" y1="155" x2="295" y2="155"/>
+      <line x1="622" y1="155" x2="733" y2="51"/>
+      <line x1="622" y1="155" x2="733" y2="155"/>
+      <line x1="622" y1="155" x2="733" y2="259"/>
+    </g>
+  </svg>
+  <p>Each environment runs the same digest, so production runs the image that passed the tests (Humble and Farley, 2010). Deploying by digest stops a moved tag from changing what runs.</p>
+  <aside class="notes">Promotion moves one artifact through the environments, and nothing is rebuilt on the way. A rebuild can pull a newer base image or package, so it produces a different image, even from the same commit. To deploy by digest, use an image reference that ends in @sha256 and the hash, which names the content. Settings that differ between environments, such as database addresses and secrets, come from the environment at run time. The Harness platform models this with services, environments and approvals. Harness Open Source has no deployment model, so on Day 3, in Lab 08, you roll out an image from this pipeline to Kubernetes yourself. Ask: is the image that reaches production in your process the same one QA tested?
+  Source: Humble, J., and Farley, D. (2010). Continuous Delivery. Addison-Wesley.</aside>
+</section>
+
+<!-- 38 -->
+<section>
+  <h2>How Harness Open Source runs a pipeline</h2>
+  <svg class="diagram" viewBox="0 0 1128 340" role="img" aria-label="The pipeline YAML in the .harness folder of the repository defines a stage of type ci. The stage runs six steps, clone, lint, test, build, scan and publish, each in its own container. All steps mount the shared workspace, which holds the cloned repository.">
+    <defs><marker id="arr-d2-38" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#56676D"/></marker></defs>
+    <rect x="310" y="1" width="817" height="336" rx="4" fill="none" stroke="#B9C8CA" stroke-width="1.5" stroke-dasharray="6 5"/>
+    <text x="334" y="30" font-size="16" fill="#56676D">Stage of type ci</text>
+    <g text-anchor="middle" fill="#17262B">
+      <rect x="0" y="120" width="250" height="100" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="125" y="162" font-size="20" font-weight="600">Pipeline YAML</text>
+      <text x="125" y="190" font-size="16" fill="#56676D">in .harness/ in the repo</text>
+      <rect x="334" y="50" width="120" height="100" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="394" y="92" font-size="20" font-weight="600">clone</text>
+      <text x="394" y="120" font-size="16" fill="#56676D">git</text>
+      <rect x="464" y="50" width="120" height="100" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="524" y="92" font-size="20" font-weight="600">lint</text>
+      <text x="524" y="120" font-size="16" fill="#56676D">hadolint</text>
+      <rect x="594" y="50" width="120" height="100" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="654" y="92" font-size="20" font-weight="600">test</text>
+      <text x="654" y="120" font-size="16" fill="#56676D">Python, Go</text>
+      <rect x="724" y="50" width="120" height="100" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="784" y="92" font-size="20" font-weight="600">build</text>
+      <text x="784" y="120" font-size="16" fill="#56676D">Docker CLI</text>
+      <rect x="854" y="50" width="120" height="100" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="914" y="92" font-size="20" font-weight="600">scan</text>
+      <text x="914" y="120" font-size="16" fill="#56676D">Trivy</text>
+      <rect x="984" y="50" width="120" height="100" rx="4" fill="#F1F6F6" stroke="#B9C8CA" stroke-width="1.5"/>
+      <text x="1044" y="92" font-size="20" font-weight="600">publish</text>
+      <text x="1044" y="120" font-size="16" fill="#56676D">Docker CLI</text>
+      <rect x="334" y="230" width="770" height="86" rx="4" fill="#FFFFFF" stroke="#0B7A75" stroke-width="2.5"/>
+      <text x="719" y="266" font-size="20" font-weight="600">Shared workspace</text>
+      <text x="719" y="294" font-size="16" fill="#56676D">the cloned repository, mounted into every step container</text>
+    </g>
+    <g stroke="#56676D" stroke-width="1.8">
+      <line x1="252" y1="170" x2="305" y2="170" marker-end="url(#arr-d2-38)"/>
+      <line x1="394" y1="152" x2="394" y2="228"/>
+      <line x1="524" y1="152" x2="524" y2="228"/>
+      <line x1="654" y1="152" x2="654" y2="228"/>
+      <line x1="784" y1="152" x2="784" y2="228"/>
+      <line x1="914" y1="152" x2="914" y2="228"/>
+      <line x1="1044" y1="152" x2="1044" y2="228"/>
+    </g>
+  </svg>
+  <p>Each step runs in its own container on the server's Docker engine (Harness, n.d.). Stages do not share files with each other.</p>
+  <aside class="notes">Harness Open Source was first released in 2023 as Gitness, the successor to Drone, the CI system that Harness acquired in 2020. It combines Git hosting, pull requests and pipelines in one container. A pipeline is a YAML file in the repository under .harness. A stage of type ci clones the repository into a workspace, and every step in the stage runs in its own container with that workspace as its working directory. So each step can use its own image, such as hadolint, Python, Go, the Docker CLI or Trivy, and all of them see the same files. Stages do not share files at all. The server starts these containers through the Docker socket it mounts, which links back to the security lecture. The open-source version has known limits. Secrets are not masked in logs, steps in a parallel group run one after another, and there is no step cache. Ask: what does each step container need installed?
+  Source: Harness. (n.d.). Harness Open Source documentation: pipelines, stages, run steps. developer.harness.io/open-source/</aside>
+</section>
+
+<!-- 39 -->
+<section>
+  <h2>Building images with the machine's Docker engine</h2>
+<pre><code>volumes:
+- name: docker-socket
+  type: host
+  spec:
+    path: /var/run/docker.sock
+steps:
+- name: build
+  type: run
+  spec:
+    container: public.ecr.aws/docker/library/docker:29-cli
+    mount:
+    - name: docker-socket
+      path: /var/run/docker.sock
+    script: |
+      docker build -t localhost:5000/bag-api:1.0.${{ build.number }} ./bag-api</code></pre>
+  <p>Through the socket, the build step uses the lab machine's Docker engine and its build cache. Socket access gives the pipeline full control of that engine (slide 12), so use this only on a one-person machine such as the lab VM.</p>
+  <aside class="notes">This is the build step from Lab 06. The stage declares a host volume for the Docker socket, and the step mounts it into a container that has only the Docker CLI. docker build then runs on the lab machine's own engine, with the build cache of earlier builds. The new image appears in docker image ls on the machine. The cost is the one from slide 12. A step that can reach the socket controls the engine and the machine. That is acceptable on a one-person lab VM. On a shared build machine, every pipeline author would get that control. The other option is the Docker plugin step, which runs its own engine inside the step container, called Docker-in-Docker. The labs avoid it, because its inner engine falls back to Google's public DNS servers, which the lab network blocks. On the Harness platform, the Build and Push to ECR step runs on build infrastructure. Ask: who can change pipeline files in your repositories?
+  Source: Harness. (n.d.). Harness Open Source documentation: volumes, run steps, plugin steps. developer.harness.io/open-source/</aside>
+</section>
+
+<!-- 40 -->
+<section>
+  <h2>A scan step that fails the pipeline</h2>
+  <table>
+    <tr><th>Part of the command</th><th>Effect</th></tr>
+    <tr><td><code>trivy image --image-src docker</code></td><td>Reads the image from the machine's Docker engine</td></tr>
+    <tr><td><code>--severity CRITICAL</code></td><td>Reports only critical findings</td></tr>
+    <tr><td><code>--ignore-unfixed</code></td><td>Leaves out findings that have no fixed version</td></tr>
+    <tr><td><code>--exit-code 1</code></td><td>Exits with code 1 when any finding remains (Aqua Security, n.d.)</td></tr>
+    <tr><td><code>localhost:5000/bag-api:1.0.42</code></td><td>The image that the build step tagged</td></tr>
+  </table>
+  <p>The pipeline runs build, scan and publish in that order, so an image that fails the scan is never pushed. A non-zero exit code fails the run step, and the pipeline stops there.</p>
+  <aside class="notes">Read the command one option at a time. The step runs in the Trivy image, public.ecr.aws/aquasecurity/trivy:0.76.1, with the Docker socket mounted. --image-src docker makes Trivy read the image from the machine's Docker engine, where the build step left it, so the scan happens before anything is pushed. --severity CRITICAL limits the report to critical findings. --ignore-unfixed hides findings that have no fixed version, because a rebuild cannot fix those. --exit-code 1 makes Trivy exit with code 1 when any finding remains, and a run step that exits with a non-zero code fails. In Lab 06 the first run fails here on the board image. Its base, nginx-unprivileged:1.27.0-alpine, has three critical vulnerabilities with fixes. Updating the base to 1.29-alpine clears them, and the next run passes. Ask: should high findings fail the pipeline as well?
+  Source: Aqua Security. (n.d.). Trivy documentation: filtering; image sources. trivy.dev</aside>
+</section>
+
+<!-- 41 -->
+<section>
+  <h2>How teams handle scan findings</h2>
+  <ul>
+    <li>Start with a rebuild on the newest base image and an update of the affected packages.</li>
+    <li>Record an accepted risk in <code>.trivyignore</code>, with a reason and an expiry date (Aqua Security, n.d.).</li>
+    <li>Review accepted risks before they expire, because the pipeline fails again on that date.</li>
+    <li>Rebuild and rescan released images on a schedule, because new CVEs appear for unchanged images.</li>
+    <li>Agree in advance which severities fail the build and who may accept a risk.</li>
+  </ul>
+  <aside class="notes">Teams that scan every build need an agreed way to deal with findings. Without one, every new CVE blocks all builds until someone decides what to do. Start with a rebuild on the newest base image, which clears every finding whose fix is already in that base. When no fix exists and the risk is acceptable, record it in .trivyignore with the CVE ID, a comment that explains why, and an expiry date in the form exp:2026-12-31. Trivy ignores that CVE until the date. After it, the pipeline fails again, which forces a review. Images that nobody changes still collect new CVEs, so rebuild and rescan released images on a schedule. Decide in advance which severities fail the build and who may accept a risk, and write the decision down. Ask: who signs off on an accepted risk in your team today?
+  Source: Aqua Security. (n.d.). Trivy documentation: filtering, .trivyignore. trivy.dev</aside>
+</section>
+
+<!-- 42 -->
+<section>
+  <h2>Harness Open Source and the Harness platform</h2>
+  <table>
+    <tr><th></th><th>Harness Open Source</th><th>Harness platform</th></tr>
+    <tr><td>Structure</td><td>Projects that hold repositories and secrets</td><td>Account, organization and project levels</td></tr>
+    <tr><td>Credentials</td><td>Project secrets, which appear unmasked in logs</td><td>Connectors for Git, registries and clouds such as Amazon ECR</td></tr>
+    <tr><td>Agents</td><td>The server runs every step itself</td><td>Delegates that run inside your network</td></tr>
+    <tr><td>Build steps</td><td><code>run</code>, <code>plugin</code>, <code>background</code>; <code>parallel</code> steps run one after another; no step cache</td><td>Build and Push to ECR, test intelligence, caching</td></tr>
+    <tr><td>Deployment</td><td>No services, environments or approvals</td><td>Services, environments, strategies, approvals and rollback for ECS and Kubernetes</td></tr>
+  </table>
+  <p>Both organise work as pipelines, stages and steps, so the ideas from Lab 06 apply to both.</p>
+  <aside class="notes">At work, you use the Harness platform. Lab 06 uses Harness Open Source, so be clear about the differences. Both use the same ideas, which are pipelines in YAML, stages that contain steps, steps that run in containers, expressions and triggers. The platform adds what a large organisation needs. Its account, organisation and project levels control who can see and change what. Connectors hold credentials for Git, registries and clouds. For example, an AWS connector lets a pipeline push to Amazon ECR without a password in the YAML. Delegates are agents that run inside the customer's network and reach private systems. The CD module models services and environments, with deployment strategies, approvals and rollback for ECS and Kubernetes. In the lab, remember that secrets appear unmasked in logs, so never print one. Expression syntax differs as well. The platform uses forms such as &lt;+pipeline.sequenceId&gt;. Ask: who owns the Harness pipelines in your team?
+  Source: Harness. (n.d.). Harness Open Source documentation; Harness CI documentation. developer.harness.io</aside>
+</section>
+
+<!-- 43 -->
+<section>
+  <h2>Lab 06: Build, scan and publish with Harness Open Source</h2>
+  <div class="lab-path">labs/06-harness-ci.md</div>
+  <ul class="lab-steps">
+    <li>Start Harness Open Source, log in as admin, and create a project and a repository</li>
+    <li>Push BagTrack and add the pipeline</li>
+    <li>Lint, test, build, scan and publish the three images</li>
+    <li>Update the board's base image when the scan fails</li>
+    <li>Find the published tags in the registry</li>
+  </ul>
+  <aside class="notes">Send everyone to Lab 06. Harness Open Source runs as a container on port 3000. It starts with an admin account created from the container's environment variables, so students log in as admin and there is no sign-up step. The first pipeline run fails at the scan on purpose. The board image is built on nginx-unprivileged:1.27.0-alpine, which has three critical vulnerabilities with fixes. Ask students to read the Trivy output, change the base to 1.29-alpine and push again. The second run should pass and publish the three images. Remind everyone that Harness Open Source does not mask secrets in logs. If someone falls behind, scripts/catch-up.sh 06 brings a machine to the start of the lab. On Day 3, Lab 08 rolls out an image from this pipeline to Kubernetes.
+  Source: course repository, labs/06-harness-ci.md.</aside>
+</section>
+
+<!-- 44 -->
+<section>
+  <h2>References</h2>
+  <ul class="refs">
+    <li>Amazon Web Services. (n.d.). <em>Amazon ECS Developer Guide</em>, including AWS Fargate; <em>Amazon ECR User Guide</em>. docs.aws.amazon.com</li>
+    <li>Aqua Security. (n.d.). <em>Trivy documentation</em>. trivy.dev</li>
+    <li>Center for Internet Security. (n.d.). <em>CIS Docker Benchmark</em>. cisecurity.org</li>
+    <li>CVE Program. (n.d.). <em>About the CVE Program</em>. cve.org</li>
+    <li>Docker. (n.d.). <em>Docker documentation</em>: multi-stage builds, build cache and secrets, Engine security, rootless mode, Compose; <em>Docker Official Images: python</em>. docs.docker.com</li>
+    <li>FIRST. (2019). <em>Common Vulnerability Scoring System v3.1: Specification document</em>. first.org/cvss</li>
+    <li>Google. (n.d.). <em>Distroless container images</em>. github.com/GoogleContainerTools/distroless</li>
+    <li>hadolint. (n.d.). <em>Haskell Dockerfile Linter</em>. github.com/hadolint/hadolint</li>
+    <li>Harness. (n.d.). <em>Harness Open Source documentation</em>; <em>Harness CI documentation</em>. developer.harness.io</li>
+    <li>Humble, J., and Farley, D. (2010). <em>Continuous Delivery</em>. Addison-Wesley.</li>
+    <li>Kerrisk, M. (n.d.). <em>Linux manual pages</em>: capabilities(7), user_namespaces(7), ld.so(8). man7.org</li>
+    <li>SLSA. (2023). <em>Supply-chain Levels for Software Artifacts, v1.0</em>. slsa.dev; CycloneDX (cyclonedx.org); SPDX (spdx.dev); Sigstore (sigstore.dev)</li>
+    <li>Souppaya, M., Morello, J., and Scarfone, K. (2017). <em>Application Container Security Guide</em> (NIST SP 800-190). NIST.</li>
+  </ul>
+  <aside class="notes">These are the sources for today's slides. Most are official documentation, which changes between releases, so they are cited without a date. For further reading, recommend NIST SP 800-190 for container risk, the Amazon ECS Developer Guide for the AWS side, and Humble and Farley's Continuous Delivery for the reasoning behind pipelines. The SLSA, CycloneDX, SPDX and Sigstore sites explain supply-chain security in more depth than this course does. Every tool in today's labs is open source, so students can repeat the labs on their own machines.</aside>
+</section>
+
+</div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.2.1/dist/reveal.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.2.1/plugin/notes/notes.js"></script>
+<script>
+Reveal.initialize({
+  width: 1280, height: 720, margin: 0, center: false, hash: true,
+  controls: false, progress: false, transition: 'none', backgroundTransition: 'none',
+  slideNumber: 'c', showSlideNumber: 'all', pdfSeparateFragments: false,
+  plugins: [ RevealNotes ]
+});
+</script>
+</body>
+</html>

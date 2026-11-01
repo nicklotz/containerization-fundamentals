@@ -1,0 +1,20 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: bag-report
+  namespace: bagtrack
+spec:
+  schedule: "*/1 * * * *"
+  successfulJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+          - name: report
+            image: localhost:5000/scanner:1.0
+            args: ["report"]
+            env:
+            - name: API_URL
+              value: http://bag-api:8000

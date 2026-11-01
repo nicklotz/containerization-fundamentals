@@ -1,0 +1,18 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: seed
+  namespace: bagtrack
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+      - name: seed
+        image: localhost:5000/bag-api:1.0
+        command: ["python", "-m", "bagtrack.seed"]
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef: {name: bag-api-db, key: DATABASE_URL}

@@ -1,0 +1,68 @@
+# Build, test, scan and publish the three BagTrack images.
+kind: pipeline
+spec:
+  stages:
+  - name: images
+    type: ci
+    spec:
+      volumes:
+      - name: docker-socket
+        type: host
+        spec:
+          path: /var/run/docker.sock
+      steps:
+      - name: lint
+        type: run
+        spec:
+          container: ghcr.io/hadolint/hadolint:v2.15.1-debian
+          script: |
+            hadolint --failure-threshold warning bag-api/Dockerfile scanner/Dockerfile board/Dockerfile
+      - name: test-api
+        type: run
+        spec:
+          container: public.ecr.aws/docker/library/python:3.13-slim
+          script: |
+            cd bag-api
+            pip install --quiet --no-cache-dir -r requirements-dev.txt
+            python -m pytest -q
+      - name: test-scanner
+        type: run
+        spec:
+          container: public.ecr.aws/docker/library/golang:1.26
+          script: |
+            cd scanner
+            go vet ./...
+            go test ./...
+      - name: build
+        type: run
+        spec:
+          container: public.ecr.aws/docker/library/docker:29-cli
+          mount:
+          - name: docker-socket
+            path: /var/run/docker.sock
+          script: |
+            for svc in bag-api scanner board; do
+              docker build --build-arg APP_VERSION=1.0.${{ build.number }} -t localhost:5000/$svc:1.0.${{ build.number }} ./$svc
+            done
+      - name: scan
+        type: run
+        spec:
+          container: public.ecr.aws/aquasecurity/trivy:0.76.1
+          mount:
+          - name: docker-socket
+            path: /var/run/docker.sock
+          script: |
+            for svc in bag-api scanner board; do
+              trivy image --image-src docker --no-progress --severity CRITICAL --ignore-unfixed --exit-code 1 localhost:5000/$svc:1.0.${{ build.number }}
+            done
+      - name: publish
+        type: run
+        spec:
+          container: public.ecr.aws/docker/library/docker:29-cli
+          mount:
+          - name: docker-socket
+            path: /var/run/docker.sock
+          script: |
+            for svc in bag-api scanner board; do
+              docker push localhost:5000/$svc:1.0.${{ build.number }}
+            done

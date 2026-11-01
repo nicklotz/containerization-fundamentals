@@ -1,0 +1,27 @@
+{
+  "family": "scanner",
+  "requiresCompatibilities": ["FARGATE"],
+  "networkMode": "awsvpc",
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "arn:aws:iam::123456789012:role/ecsTaskExecutionRole",
+  "containerDefinitions": [
+    {
+      "name": "scanner",
+      "image": "123456789012.dkr.ecr.us-east-1.amazonaws.com/scanner:1.0",
+      "essential": true,
+      "environment": [
+        { "name": "API_URL", "value": "http://bag-api.bagtrack.local:8000" },
+        { "name": "SCAN_INTERVAL", "value": "3s" }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/bagtrack",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "scanner"
+        }
+      }
+    }
+  ]
+}

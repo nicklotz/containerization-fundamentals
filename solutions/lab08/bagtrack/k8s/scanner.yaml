@@ -1,0 +1,23 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scanner
+  namespace: bagtrack
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: scanner
+  template:
+    metadata:
+      labels:
+        app: scanner
+    spec:
+      containers:
+      - name: scanner
+        image: localhost:5000/scanner:1.0
+        env:
+        - name: API_URL
+          value: http://bag-api:8000
+        livenessProbe:
+          httpGet: {path: /healthz, port: 8081}

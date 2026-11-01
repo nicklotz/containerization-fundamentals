@@ -1,0 +1,52 @@
+name: bagtrack
+
+services:
+  db:
+    image: public.ecr.aws/docker/library/postgres:17
+    environment:
+      POSTGRES_USER: bagtrack
+      POSTGRES_PASSWORD: bagtrack-dev-pw
+      POSTGRES_DB: bagtrack
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bagtrack -d bagtrack"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  bag-api:
+    build: ./bag-api
+    image: localhost:5000/bag-api:1.0
+    environment:
+      DATABASE_URL: postgresql://bagtrack:bagtrack-dev-pw@db:5432/bagtrack
+      HUB: ORD
+      APP_VERSION: "1.0"
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  scanner:
+    build: ./scanner
+    image: localhost:5000/scanner:1.0
+    environment:
+      API_URL: http://bag-api:8000
+      SCAN_INTERVAL: 3s
+      APP_VERSION: "1.0"
+    depends_on:
+      bag-api:
+        condition: service_healthy
+
+  board:
+    build: ./board
+    image: localhost:5000/board:1.0
+    ports:
+      - "8080:8080"
+    depends_on:
+      bag-api:
+        condition: service_healthy
+
+volumes:
+  db-data:

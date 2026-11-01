@@ -1,0 +1,11 @@
+{
+  "hub": "ORD",
+  "gates": [
+    {"flight": "FL101", "destination": "SFO", "gate": "A3", "departs": "08:15", "status": "Boarding"},
+    {"flight": "FL202", "destination": "DEN", "gate": "A7", "departs": "08:40", "status": "On time"},
+    {"flight": "FL303", "destination": "BOS", "gate": "B2", "departs": "09:05", "status": "Delayed"},
+    {"flight": "FL404", "destination": "MIA", "gate": "B9", "departs": "09:30", "status": "On time"},
+    {"flight": "FL505", "destination": "SEA", "gate": "C4", "departs": "10:10", "status": "On time"},
+    {"flight": "FL606", "destination": "AUS", "gate": "C11", "departs": "10:45", "status": "Gate change"}
+  ]
+}
