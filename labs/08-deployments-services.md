@@ -87,7 +87,7 @@
 
    The Deployment shows `3/3`, and the names of the ReplicaSet and of the three Pods start with `bag-api-` (run the command again if READY is lower).
 
-5. In Headlamp, click **Map** in the sidebar.
+5. In Headlamp, click **Map** in the sidebar, then the **bag-api** box in the `bagtrack` namespace.
 
    <!-- shots:begin -->
    <img src="img/08-deployments-services/0092-headlamp_view-1.png" alt="Headlamp: map" width="800">
@@ -320,6 +320,8 @@
 
    <!-- ui: headlamp_scale bagtrack bag-api 3 -->
 
+   Until the two extra Pods have stopped, **Diagnostics** shows the warning `2 pods are failing with Terminating`.
+
    <!-- test
    for i in $(seq 1 60); do
      [ "$(kubectl -n bagtrack get pods -l app=bag-api --no-headers | wc -l)" -eq 3 ] && break
@@ -340,7 +342,7 @@
    t_eq "$(kubectl -n bagtrack get deploy bag-api -o jsonpath='{.spec.replicas}')" 3 "bag-api replicas"
    -->
 
-5. In Headlamp, click **Workloads**, then **Pods**, then one of the **bag-api-…** Pods, then the **Delete** icon, and confirm with **Delete**.
+5. In Headlamp, click **Workloads**, then **Pods**, then one of the **bag-api-…** Pods, then the **More delete options** arrow to the right of the bin icon, then **Delete**, and confirm with **Delete**.
 
    <!-- shots:begin -->
    <img src="img/08-deployments-services/0319-headlamp_delete_pod-1.png" alt="Delete the Pod in Headlamp, step 1 of 4" width="800">
@@ -354,6 +356,8 @@
    <!-- shots:end -->
 
    <!-- ui: headlamp_delete_pod bagtrack bag-api -->
+
+   Headlamp shows `Deleting item` with a **Cancel** button for a few seconds before it deletes the Pod. If you click the bin icon itself, Headlamp offers **Evict** instead of **Delete**, which also works for this step.
 
 6. List the bag-api Pods again.
 

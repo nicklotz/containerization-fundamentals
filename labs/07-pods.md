@@ -150,7 +150,7 @@
 
    The overview of the cluster opens. Its **Events** list can show warnings from the first seconds of the new cluster, such as `FailedCreatePodSandBox` and `InvalidDiskCapacity`. Kubernetes retries those Pods by itself, and the warnings do not come back.
 
-7. In the sidebar, click **Cluster**, then **Nodes**.
+7. In the sidebar, click **Nodes**.
 
    <!-- shots:begin -->
    <img src="img/07-pods/0150-headlamp_view-1.png" alt="Headlamp: nodes" width="800">
