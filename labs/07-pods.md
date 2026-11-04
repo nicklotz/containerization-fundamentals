@@ -148,7 +148,7 @@
 
    <!-- ui: headlamp_view cluster -->
 
-   The overview of the cluster opens.
+   The overview of the cluster opens. Its **Events** list can show warnings from the first seconds of the new cluster, such as `FailedCreatePodSandBox` and `InvalidDiskCapacity`. Kubernetes retries those Pods by itself, and the warnings do not come back.
 
 7. In the sidebar, click **Cluster**, then **Nodes**.
 
@@ -316,7 +316,7 @@
 
    <!-- ui: headlamp_view pod-logs bagtrack bag-api -->
 
-   Headlamp shows the same log as step 7.
+   Headlamp shows the same log as step 7. An `Unhealthy` warning under **Diagnostics** on the Pod page is from the seconds before bag-api answered its first readiness probe.
 
 ## Part 5: Readiness in action
 
